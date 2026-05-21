@@ -27,9 +27,8 @@ class Settings(BaseSettings):
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = "noreply@smartjobapply.com"
 
-    # Supabase (optional — used for auth token verification if proxying Supabase)
-    supabase_url: str = ""
-    supabase_anon_key: str = ""
+    # Netlify frontend URL (for CORS)
+    frontend_url: str = "http://localhost:3000"
 
     # Match threshold for auto-apply
     match_score_threshold: float = 75.0

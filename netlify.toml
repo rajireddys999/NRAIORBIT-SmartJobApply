@@ -1,0 +1,30 @@
+[build]
+  base    = "frontend"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Redirect all /api/* calls to Railway backend — keeps auth cookies on same origin
+[[redirects]]
+  from   = "/api/*"
+  to     = ":RAILWAY_BACKEND_URL/api/:splat"
+  status = 200
+  force  = true
+  headers = {X-Forwarded-Host = ":HOST"}
+
+# SPA fallback — Next.js handles its own routing
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+[context.production.environment]
+  NEXT_PUBLIC_API_URL = ""   # set in Netlify dashboard → empty = use /api proxy
+
+[context.deploy-preview.environment]
+  NEXT_PUBLIC_API_URL = ""
+
+[context.branch-deploy.environment]
+  NEXT_PUBLIC_API_URL = ""

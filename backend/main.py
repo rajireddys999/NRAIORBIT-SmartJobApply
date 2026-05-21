@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from backend.api.routes import auth, resumes, jobs, matches, applications
 from backend.models.database import init_db
+from backend.config import settings
 
 
 @asynccontextmanager
@@ -18,9 +19,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Allow localhost dev + Netlify production + any *.netlify.app previews
+allowed_origins = [
+    "http://localhost:3000",
+    settings.frontend_url,
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.netlify\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
