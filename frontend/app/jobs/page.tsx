@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/auth";
 import { getJobs } from "@/lib/api";
+import Logo from "@/components/Logo";
 
 export default function JobBoard() {
   const router = useRouter();
@@ -19,8 +20,8 @@ export default function JobBoard() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
-      <nav className="border-b border-slate-700 px-6 py-4 flex justify-between items-center">
-        <span className="font-bold text-xl">SmartJobApply</span>
+      <nav className="border-b border-white/10 px-6 py-3 flex justify-between items-center bg-[#020817]/90 backdrop-blur-md">
+        <Logo size="sm" />
         <a href="/dashboard" className="text-slate-300 hover:text-white text-sm">Dashboard</a>
       </nav>
 

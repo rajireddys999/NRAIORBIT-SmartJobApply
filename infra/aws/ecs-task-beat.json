@@ -1,0 +1,32 @@
+{
+  "family": "smartjobapply-beat",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::AWS_ACCOUNT_ID:role/smartjobapply-ecs-task-role",
+  "taskRoleArn": "arn:aws:iam::AWS_ACCOUNT_ID:role/smartjobapply-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "celery-beat",
+      "image": "AWS_ACCOUNT_ID.dkr.ecr.AWS_REGION.amazonaws.com/smartjobapply-backend:latest",
+      "command": ["celery", "-A", "backend.celery_app.celery_app", "beat", "--loglevel=info"],
+      "environment": [
+        { "name": "PYTHONPATH", "value": "/app" }
+      ],
+      "secrets": [
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:DATABASE_URL::" },
+        { "name": "REDIS_URL",    "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:REDIS_URL::" },
+        { "name": "SECRET_KEY",   "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:SECRET_KEY::" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/smartjobapply/beat",
+          "awslogs-region": "AWS_REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "family": "smartjobapply-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::AWS_ACCOUNT_ID:role/smartjobapply-ecs-task-role",
+  "taskRoleArn": "arn:aws:iam::AWS_ACCOUNT_ID:role/smartjobapply-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "AWS_ACCOUNT_ID.dkr.ecr.AWS_REGION.amazonaws.com/smartjobapply-backend:latest",
+      "portMappings": [{ "containerPort": 8000, "protocol": "tcp" }],
+      "command": ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"],
+      "environment": [
+        { "name": "PYTHONPATH", "value": "/app" }
+      ],
+      "secrets": [
+        { "name": "DATABASE_URL",          "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:DATABASE_URL::" },
+        { "name": "REDIS_URL",             "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:REDIS_URL::" },
+        { "name": "SECRET_KEY",            "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:SECRET_KEY::" },
+        { "name": "OPENAI_API_KEY",        "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:OPENAI_API_KEY::" },
+        { "name": "AWS_ACCESS_KEY_ID",     "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:AWS_ACCESS_KEY_ID::" },
+        { "name": "AWS_SECRET_ACCESS_KEY", "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:AWS_SECRET_ACCESS_KEY::" },
+        { "name": "S3_BUCKET_NAME",        "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:S3_BUCKET_NAME::" },
+        { "name": "SENDGRID_API_KEY",      "valueFrom": "arn:aws:secretsmanager:AWS_REGION:AWS_ACCOUNT_ID:secret:smartjobapply/prod:SENDGRID_API_KEY::" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/smartjobapply/backend",
+          "awslogs-region": "AWS_REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 15
+      }
+    }
+  ]
+}

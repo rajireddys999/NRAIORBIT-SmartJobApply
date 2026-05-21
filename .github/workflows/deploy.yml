@@ -1,59 +1,173 @@
-name: Deploy to GCP Cloud Run
+name: Deploy to AWS
 
 on:
   push:
     branches: [main]
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: us-central1
-  BACKEND_SERVICE: smartjobapply-backend
-  FRONTEND_SERVICE: smartjobapply-frontend
+  AWS_REGION:      ${{ secrets.AWS_REGION }}
+  ECR_BACKEND:     ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/smartjobapply-backend
+  ECR_FRONTEND:    ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/smartjobapply-frontend
+  ECS_CLUSTER:     smartjobapply-cluster
+  BACKEND_SERVICE: smartjobapply-backend-svc
+  WORKER_SERVICE:  smartjobapply-worker-svc
+  BEAT_SERVICE:    smartjobapply-beat-svc
 
 jobs:
-  deploy:
-    name: Deploy
+  # ── Build & push Docker images ──────────────────────────────
+  build:
+    name: Build & Push to ECR
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
 
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+      - name: Set image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
 
       - name: Build & push backend
         run: |
           docker build -f infra/Dockerfile.backend \
-            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smartjobapply/${{ env.BACKEND_SERVICE }}:${{ github.sha }} .
-          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smartjobapply/${{ env.BACKEND_SERVICE }}:${{ github.sha }}
+            -t $ECR_BACKEND:${{ steps.meta.outputs.tag }} \
+            -t $ECR_BACKEND:latest .
+          docker push $ECR_BACKEND:${{ steps.meta.outputs.tag }}
+          docker push $ECR_BACKEND:latest
 
       - name: Build & push frontend
         run: |
           docker build -f infra/Dockerfile.frontend \
-            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smartjobapply/${{ env.FRONTEND_SERVICE }}:${{ github.sha }} .
-          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smartjobapply/${{ env.FRONTEND_SERVICE }}:${{ github.sha }}
+            --build-arg NEXT_PUBLIC_API_URL=${{ secrets.BACKEND_URL }} \
+            -t $ECR_FRONTEND:${{ steps.meta.outputs.tag }} \
+            -t $ECR_FRONTEND:latest .
+          docker push $ECR_FRONTEND:${{ steps.meta.outputs.tag }}
+          docker push $ECR_FRONTEND:latest
 
-      - name: Deploy backend to Cloud Run
-        run: |
-          gcloud run deploy ${{ env.BACKEND_SERVICE }} \
-            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smartjobapply/${{ env.BACKEND_SERVICE }}:${{ github.sha }} \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated \
-            --set-env-vars "$(cat .env | grep -v '^#' | tr '\n' ',')"
+  # ── Deploy backend (ECS Fargate) ────────────────────────────
+  deploy-backend:
+    name: Deploy Backend → ECS
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Deploy frontend to Cloud Run
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Render ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: infra/aws/ecs-task-backend.json
+          container-name:  backend
+          image:           ${{ env.ECR_BACKEND }}:${{ needs.build.outputs.image_tag }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition:  ${{ steps.task-def.outputs.task-definition }}
+          service:          ${{ env.BACKEND_SERVICE }}
+          cluster:          ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+  # ── Deploy Celery worker ────────────────────────────────────
+  deploy-worker:
+    name: Deploy Worker → ECS
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Render ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: infra/aws/ecs-task-worker.json
+          container-name:  celery-worker
+          image:           ${{ env.ECR_BACKEND }}:${{ needs.build.outputs.image_tag }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition:  ${{ steps.task-def.outputs.task-definition }}
+          service:          ${{ env.WORKER_SERVICE }}
+          cluster:          ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+  # ── Deploy Celery beat ──────────────────────────────────────
+  deploy-beat:
+    name: Deploy Beat → ECS
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Render ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: infra/aws/ecs-task-beat.json
+          container-name:  celery-beat
+          image:           ${{ env.ECR_BACKEND }}:${{ needs.build.outputs.image_tag }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition:  ${{ steps.task-def.outputs.task-definition }}
+          service:          ${{ env.BEAT_SERVICE }}
+          cluster:          ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+  # ── Run DB migrations ───────────────────────────────────────
+  migrate:
+    name: Run DB Migrations
+    runs-on: ubuntu-latest
+    needs: [deploy-backend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Run init_db via ECS run-task
         run: |
-          gcloud run deploy ${{ env.FRONTEND_SERVICE }} \
-            --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smartjobapply/${{ env.FRONTEND_SERVICE }}:${{ github.sha }} \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated \
-            --set-env-vars "NEXT_PUBLIC_API_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} --region ${{ env.REGION }} --format='value(status.url)')"
+          aws ecs run-task \
+            --cluster $ECS_CLUSTER \
+            --task-definition smartjobapply-backend \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.SUBNET_IDS }}],securityGroups=[${{ secrets.BACKEND_SG_ID }}],assignPublicIp=ENABLED}" \
+            --overrides '{"containerOverrides":[{"name":"backend","command":["python","-c","import asyncio; from backend.models.database import init_db; asyncio.run(init_db())"]}]}' \
+            --region ${{ secrets.AWS_REGION }}

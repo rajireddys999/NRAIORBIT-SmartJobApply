@@ -1,22 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #020817;
+  --foreground: #f1f5f9;
 }
 
 body {
@@ -24,3 +10,57 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Neural network node pulse */
+@keyframes pulse-node {
+  0%, 100% { opacity: 0.4; r: 3; }
+  50% { opacity: 1; r: 5; }
+}
+
+/* Data packet traveling along edges */
+@keyframes travel {
+  0%   { stroke-dashoffset: 200; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+/* Orbit ring spin */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes spin-reverse {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+
+/* Glow pulse on logo text */
+@keyframes glow {
+  0%, 100% { text-shadow: 0 0 8px rgba(99,102,241,0.5); }
+  50%       { text-shadow: 0 0 24px rgba(99,102,241,1), 0 0 48px rgba(139,92,246,0.6); }
+}
+
+/* Scan line sweep */
+@keyframes scan {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  10%  { opacity: 0.6; }
+  90%  { opacity: 0.6; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+/* Floating card lift */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-6px); }
+}
+
+.animate-glow       { animation: glow 3s ease-in-out infinite; }
+.animate-spin-slow  { animation: spin-slow 12s linear infinite; }
+.animate-spin-rev   { animation: spin-reverse 18s linear infinite; }
+.animate-float      { animation: float 4s ease-in-out infinite; }
+.animate-scan       { animation: scan 6s ease-in-out infinite; }
+
+.node { animation: pulse-node 2s ease-in-out infinite; }
+.packet { animation: travel 3s linear infinite; stroke-dasharray: 200; }
