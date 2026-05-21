@@ -24,7 +24,7 @@ export default function JobBoard() {
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       <nav className="border-b px-6 py-3 flex justify-between items-center sticky top-0 z-20 backdrop-blur-md"
         style={{ background: "var(--bg-nav)", borderColor: "var(--border)" }}>
-        <Logo size="sm" />
+        <Link href="/"><Logo size="sm" /></Link>
         <div className="flex items-center gap-3">
           <Link href="/dashboard" className="text-[var(--text-muted)] hover:text-[var(--text)] text-sm transition px-3 py-1.5 rounded-lg">
             Dashboard

@@ -1,23 +1,43 @@
-import boto3
-from botocore.exceptions import ClientError
+"""
+Resume file storage via Supabase Storage (replaces AWS S3).
+Bucket name is configured via SUPABASE_STORAGE_BUCKET env var (default: resumes).
+"""
+from __future__ import annotations
+
 from fastapi import UploadFile
+from supabase import create_client, Client
 
 from backend.config import settings
 
-_s3 = boto3.client(
-    "s3",
-    aws_access_key_id=settings.aws_access_key_id,
-    aws_secret_access_key=settings.aws_secret_access_key,
-    region_name=settings.aws_region,
-)
+_client: Client | None = None
+
+
+def _get_client() -> Client:
+    global _client
+    if _client is None:
+        _client = create_client(settings.supabase_url, settings.supabase_service_key)
+    return _client
 
 
 def upload_resume(file: UploadFile, user_id: str) -> str:
-    key = f"resumes/{user_id}/{file.filename}"
-    _s3.upload_fileobj(file.file, settings.s3_bucket_name, key, ExtraArgs={"ContentType": "application/pdf"})
-    return f"https://{settings.s3_bucket_name}.s3.{settings.aws_region}.amazonaws.com/{key}"
+    """Upload PDF to Supabase Storage and return a storable reference."""
+    data = file.file.read()
+    path = f"{user_id}/{file.filename}"
+    bucket = settings.supabase_storage_bucket
+
+    _get_client().storage.from_(bucket).upload(
+        path=path,
+        file=data,
+        file_options={"content-type": "application/pdf", "upsert": "true"},
+    )
+    return f"supabase://{bucket}/{path}"
 
 
-def get_presigned_url(s3_url: str, expires: int = 3600) -> str:
-    key = s3_url.split(".amazonaws.com/", 1)[-1]
-    return _s3.generate_presigned_url("get_object", Params={"Bucket": settings.s3_bucket_name, "Key": key}, ExpiresIn=expires)
+def get_presigned_url(storage_ref: str, expires: int = 3600) -> str:
+    """Return a short-lived signed URL from a supabase:// reference."""
+    if not storage_ref.startswith("supabase://"):
+        return storage_ref  # legacy plain-URL rows
+    _, rest = storage_ref.split("supabase://", 1)
+    bucket, path = rest.split("/", 1)
+    result = _get_client().storage.from_(bucket).create_signed_url(path, expires)
+    return result["signedURL"]

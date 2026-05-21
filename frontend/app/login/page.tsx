@@ -35,9 +35,9 @@ export default function LoginPage() {
         <ThemeToggle />
       </div>
 
-      <div className="mb-8">
+      <Link href="/" className="mb-8 block">
         <Logo size="md" />
-      </div>
+      </Link>
 
       <div className="w-full max-w-md rounded-2xl p-8 border"
         style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>

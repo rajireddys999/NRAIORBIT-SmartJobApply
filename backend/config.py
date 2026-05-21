@@ -17,11 +17,10 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
 
-    # AWS S3
-    aws_access_key_id: str = ""
-    aws_secret_access_key: str = ""
-    aws_region: str = "us-east-1"
-    s3_bucket_name: str = "smartjobapply-resumes"
+    # Supabase Storage
+    supabase_url: str = ""
+    supabase_service_key: str = ""
+    supabase_storage_bucket: str = "resumes"
 
     # SendGrid
     sendgrid_api_key: str = ""
