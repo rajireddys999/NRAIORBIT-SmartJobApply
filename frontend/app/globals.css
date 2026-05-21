@@ -1,14 +1,34 @@
 @import "tailwindcss";
 
+/* Class-based dark mode for next-themes */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Theme tokens ───────────────────────────────── */
 :root {
-  --background: #020817;
-  --foreground: #f1f5f9;
+  --bg:         #f1f5f9;
+  --bg-nav:     rgba(255,255,255,0.92);
+  --bg-card:    #ffffff;
+  --bg-input:   #f1f5f9;
+  --text:       #0f172a;
+  --text-muted: #64748b;
+  --border:     rgba(0,0,0,0.09);
+}
+
+.dark {
+  --bg:         #020817;
+  --bg-nav:     rgba(4,5,15,0.85);
+  --bg-card:    rgba(255,255,255,0.03);
+  --bg-input:   rgba(255,255,255,0.06);
+  --text:       #f1f5f9;
+  --text-muted: #94a3b8;
+  --border:     rgba(255,255,255,0.08);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background 0.2s, color 0.2s;
 }
 
 /* Neural network node pulse */

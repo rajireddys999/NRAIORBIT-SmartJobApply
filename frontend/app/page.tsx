@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import AiBrain from "@/components/AiBrain";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const STATS = [
   { value: "24/7", label: "Always Running" },
@@ -69,7 +70,8 @@ export default function Home() {
       <nav className="fixed top-0 inset-x-0 z-50 border-b border-white/5 bg-[#020817]/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 py-3 flex justify-between items-center">
           <Logo size="sm" />
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
             <Link href="/login" className="text-slate-400 hover:text-white text-sm transition">Log In</Link>
             <Link href="/register"
               className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded-lg font-semibold transition shadow-lg shadow-indigo-500/25">

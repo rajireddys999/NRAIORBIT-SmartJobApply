@@ -5,29 +5,44 @@ import Link from "next/link";
 import { getToken, clearToken } from "@/lib/auth";
 import { getMatches, getApplications, uploadResume } from "@/lib/api";
 import Logo from "@/components/Logo";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const SCORE_COLOR = (s: number) =>
-  s >= 85 ? "text-emerald-400" : s >= 70 ? "text-green-400" : s >= 50 ? "text-yellow-400" : "text-slate-400";
+  s >= 85 ? "text-emerald-500" : s >= 70 ? "text-green-500" : s >= 50 ? "text-yellow-500" : "text-slate-400";
 
 const SCORE_GLOW = (s: number) =>
-  s >= 85 ? "shadow-emerald-500/40" : s >= 70 ? "shadow-green-500/40" : s >= 50 ? "shadow-yellow-500/30" : "";
+  s >= 85 ? "shadow-emerald-500/30" : s >= 70 ? "shadow-green-500/30" : s >= 50 ? "shadow-yellow-500/20" : "";
 
 const STATUS_BADGE: Record<string, string> = {
-  applied:  "bg-green-500/20 text-green-300 border border-green-500/40",
-  pending:  "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40",
-  failed:   "bg-red-500/20 text-red-300 border border-red-500/40",
-  skipped:  "bg-slate-700/60 text-slate-400 border border-slate-600/40",
+  applied: "bg-green-500/15 text-green-600 dark:text-green-300 border border-green-500/30",
+  pending: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30",
+  failed:  "bg-red-500/15 text-red-600 dark:text-red-300 border border-red-500/30",
+  skipped: "bg-slate-200 dark:bg-slate-700/60 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-600/40",
+};
+
+const STATS = (matches: any[], applications: any[], avgScore: string | null) => [
+  { label: "Total Matches",  value: matches.length,                         icon: "🎯", color: "indigo"  },
+  { label: "Strong Matches", value: matches.filter(m => m.score >= 75).length, icon: "⚡", color: "emerald" },
+  { label: "Jobs Applied",   value: applications.length,                    icon: "✅", color: "purple"  },
+  { label: "Avg Score",      value: avgScore ? `${avgScore}%` : "—",        icon: "📊", color: "cyan"    },
+];
+
+const CARD_COLORS: Record<string, string> = {
+  indigo:  "border-indigo-400/30  dark:border-indigo-500/30  bg-indigo-50  dark:bg-indigo-600/10",
+  emerald: "border-emerald-400/30 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-600/10",
+  purple:  "border-purple-400/30  dark:border-purple-500/30  bg-purple-50  dark:bg-purple-600/10",
+  cyan:    "border-cyan-400/30    dark:border-cyan-500/30    bg-cyan-50    dark:bg-cyan-600/10",
 };
 
 export default function Dashboard() {
   const router = useRouter();
-  const [matches, setMatches] = useState<any[]>([]);
+  const [matches, setMatches]           = useState<any[]>([]);
   const [applications, setApplications] = useState<any[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadMsg, setUploadMsg] = useState("");
+  const [uploading, setUploading]       = useState(false);
+  const [uploadMsg, setUploadMsg]       = useState("");
   const [uploadSuccess, setUploadSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState<"matches" | "applied">("matches");
-  const [dragging, setDragging] = useState(false);
+  const [activeTab, setActiveTab]       = useState<"matches" | "applied">("matches");
+  const [dragging, setDragging]         = useState(false);
 
   useEffect(() => {
     const token = getToken();
@@ -38,98 +53,46 @@ export default function Dashboard() {
 
   async function doUpload(file: File) {
     const token = getToken()!;
-    setUploading(true);
-    setUploadMsg("");
-    setUploadSuccess(false);
+    setUploading(true); setUploadMsg(""); setUploadSuccess(false);
     try {
       await uploadResume(token, file);
       setUploadMsg("Resume uploaded — AI matching started in background.");
       setUploadSuccess(true);
     } catch (err: any) {
       setUploadMsg(err.message || "Upload failed.");
-      setUploadSuccess(false);
     } finally {
       setUploading(false);
     }
   }
 
-  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) doUpload(file);
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) doUpload(file);
-  }
-
-  function handleLogout() {
-    clearToken();
-    router.push("/login");
-  }
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; if (f) doUpload(f);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false);
+    const f = e.dataTransfer.files?.[0]; if (f) doUpload(f);
+  };
+  const handleLogout = () => { clearToken(); router.push("/login"); };
 
   const avgScore = matches.length
     ? (matches.reduce((s, m) => s + m.score, 0) / matches.length).toFixed(1)
     : null;
 
-  const stats = [
-    {
-      label: "Total Matches",
-      value: matches.length,
-      icon: "🎯",
-      gradient: "from-indigo-600/30 to-indigo-900/10",
-      border: "border-indigo-500/30",
-      glow: "shadow-indigo-500/20",
-    },
-    {
-      label: "Strong Matches",
-      value: matches.filter(m => m.score >= 75).length,
-      icon: "⚡",
-      gradient: "from-emerald-600/30 to-emerald-900/10",
-      border: "border-emerald-500/30",
-      glow: "shadow-emerald-500/20",
-    },
-    {
-      label: "Jobs Applied",
-      value: applications.length,
-      icon: "✅",
-      gradient: "from-purple-600/30 to-purple-900/10",
-      border: "border-purple-500/30",
-      glow: "shadow-purple-500/20",
-    },
-    {
-      label: "Avg Match Score",
-      value: avgScore ? `${avgScore}%` : "—",
-      icon: "📊",
-      gradient: "from-cyan-600/30 to-cyan-900/10",
-      border: "border-cyan-500/30",
-      glow: "shadow-cyan-500/20",
-    },
-  ];
-
   return (
-    <div
-      className="min-h-screen text-white"
-      style={{
-        background: "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(99,102,241,0.18) 0%, transparent 60%), linear-gradient(180deg, #04050f 0%, #080b1a 40%, #060910 100%)",
-      }}
-    >
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]
+      dark:[background:radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(99,102,241,0.18)_0%,transparent_60%),linear-gradient(180deg,#04050f_0%,#080b1a_40%,#060910_100%)]">
+
       {/* Nav */}
-      <nav
-        className="border-b border-white/8 px-6 py-3 flex justify-between items-center sticky top-0 z-20"
-        style={{ background: "rgba(4,5,15,0.85)", backdropFilter: "blur(16px)" }}
-      >
+      <nav className="border-b px-6 py-3 flex justify-between items-center sticky top-0 z-20 backdrop-blur-md"
+        style={{ background: "var(--bg-nav)", borderColor: "var(--border)" }}>
         <Logo size="sm" />
-        <div className="flex gap-4 items-center">
-          <Link href="/jobs" className="text-slate-300 hover:text-white text-sm transition px-3 py-1.5 rounded-lg hover:bg-white/5">
+        <div className="flex gap-3 items-center">
+          <Link href="/jobs" className="text-[var(--text-muted)] hover:text-[var(--text)] text-sm transition px-3 py-1.5 rounded-lg">
             Job Board
           </Link>
-          <button
-            onClick={handleLogout}
-            className="text-slate-400 hover:text-white text-sm transition px-3 py-1.5 rounded-lg hover:bg-red-500/10 hover:text-red-300"
-          >
+          <ThemeToggle />
+          <button onClick={handleLogout}
+            className="text-[var(--text-muted)] hover:text-red-500 text-sm transition px-3 py-1.5 rounded-lg">
             Log out
           </button>
         </div>
@@ -139,14 +102,15 @@ export default function Dashboard() {
 
         {/* Page header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-extrabold tracking-tight" style={{
-            background: "linear-gradient(135deg, #fff 0%, #a5b4fc 50%, #818cf8 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}>
+          <h1 className="text-3xl font-extrabold tracking-tight
+            dark:[background:linear-gradient(135deg,#fff_0%,#a5b4fc_50%,#818cf8_100%)]
+            dark:[-webkit-background-clip:text] dark:[-webkit-text-fill-color:transparent]
+            text-gray-900">
             Mission Control
           </h1>
-          <p className="text-slate-400 mt-1 text-sm">Your AI job-hunting dashboard — matches, applications, and resume management.</p>
+          <p className="text-[var(--text-muted)] mt-1 text-sm">
+            Your AI job-hunting dashboard — matches, applications, and resume management.
+          </p>
         </div>
 
         {/* Resume Upload */}
@@ -155,25 +119,21 @@ export default function Dashboard() {
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
           className={`rounded-2xl p-6 mb-8 border transition-all duration-300 ${
-            dragging
-              ? "border-indigo-400/70 bg-indigo-500/10 shadow-lg shadow-indigo-500/20"
-              : "border-white/10 bg-white/[0.03]"
+            dragging ? "border-indigo-400/70 bg-indigo-500/10 shadow-lg shadow-indigo-500/20" : ""
           }`}
-          style={{ boxShadow: dragging ? undefined : "inset 0 1px 0 rgba(255,255,255,0.05)" }}
+          style={dragging ? {} : { background: "var(--bg-card)", borderColor: "var(--border)" }}
         >
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-white mb-0.5">Resume Upload</h2>
-              <p className="text-slate-400 text-xs">PDF only · AI parses and starts matching immediately</p>
+              <h2 className="text-base font-semibold mb-0.5">Resume Upload</h2>
+              <p className="text-[var(--text-muted)] text-xs">PDF only · AI parses and starts matching immediately</p>
             </div>
             <label className="flex items-center gap-3 cursor-pointer shrink-0">
-              <span
-                className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 select-none ${
-                  uploading
-                    ? "bg-indigo-500/40 text-indigo-300 cursor-wait"
-                    : "bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/30 hover:shadow-indigo-400/40"
-                }`}
-              >
+              <span className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all select-none ${
+                uploading
+                  ? "bg-indigo-400/40 text-indigo-300 cursor-wait"
+                  : "bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/30"
+              }`}>
                 {uploading ? "Uploading…" : "Choose PDF"}
               </span>
               <input type="file" accept=".pdf" className="hidden" onChange={handleFileInput} disabled={uploading} />
@@ -182,33 +142,25 @@ export default function Dashboard() {
           {uploadMsg && (
             <div className={`mt-4 rounded-xl px-4 py-2.5 text-sm flex items-center gap-2 ${
               uploadSuccess
-                ? "bg-green-500/10 border border-green-500/30 text-green-300"
-                : "bg-red-500/10 border border-red-500/30 text-red-300"
+                ? "bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-300"
+                : "bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-300"
             }`}>
               <span>{uploadSuccess ? "✅" : "❌"}</span>
               {uploadMsg}
             </div>
           )}
-          {dragging && (
-            <div className="mt-4 text-center text-indigo-300 text-sm font-medium animate-pulse">
-              Drop PDF here to upload
-            </div>
-          )}
+          {dragging && <p className="mt-4 text-center text-indigo-400 text-sm font-medium animate-pulse">Drop PDF here</p>}
         </div>
 
-        {/* Stats Grid */}
+        {/* Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {stats.map(s => (
-            <div
-              key={s.label}
-              className={`rounded-2xl p-5 border bg-gradient-to-br ${s.gradient} ${s.border} shadow-lg ${s.glow}`}
-              style={{ boxShadow: `0 4px 32px -4px var(--tw-shadow-color)` }}
-            >
+          {STATS(matches, applications, avgScore).map(s => (
+            <div key={s.label} className={`rounded-2xl p-5 border shadow-sm ${CARD_COLORS[s.color]}`}>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs uppercase tracking-widest text-slate-400 font-medium">{s.label}</p>
+                <p className="text-xs uppercase tracking-widest text-[var(--text-muted)] font-medium">{s.label}</p>
                 <span className="text-lg">{s.icon}</span>
               </div>
-              <p className="text-3xl font-black tracking-tight text-white">{s.value}</p>
+              <p className="text-3xl font-black tracking-tight">{s.value}</p>
             </div>
           ))}
         </div>
@@ -216,15 +168,13 @@ export default function Dashboard() {
         {/* Tabs */}
         <div className="flex gap-2 mb-5">
           {(["matches", "applied"] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all ${
                 activeTab === tab
-                  ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/30"
-                  : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-white/8"
+                  ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/25"
+                  : "border text-[var(--text-muted)] hover:text-[var(--text)]"
               }`}
-            >
+              style={activeTab !== tab ? { borderColor: "var(--border)", background: "var(--bg-card)" } : {}}>
               {tab === "matches" ? `Job Matches (${matches.length})` : `Applied (${applications.length})`}
             </button>
           ))}
@@ -234,23 +184,23 @@ export default function Dashboard() {
         {activeTab === "matches" && (
           <div className="space-y-3">
             {matches.length === 0 ? (
-              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-16 text-center">
+              <div className="rounded-2xl border p-16 text-center"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
                 <div className="text-5xl mb-4">📄</div>
-                <p className="text-white font-semibold text-lg mb-1">No matches yet</p>
-                <p className="text-slate-400 text-sm">Upload your resume above — the AI starts matching within seconds.</p>
+                <p className="font-semibold text-lg mb-1">No matches yet</p>
+                <p className="text-[var(--text-muted)] text-sm">Upload your resume above — AI starts matching within seconds.</p>
               </div>
             ) : matches.map(m => (
-              <div
-                key={m.match_id}
-                className="rounded-2xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all duration-200 p-5 flex gap-4 items-start"
-                style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}
-              >
-                {/* Score ring */}
-                <div className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-sm font-black shadow-lg ${SCORE_GLOW(m.score)} ${
-                  m.score >= 85 ? "bg-emerald-500/20 border border-emerald-500/40" :
-                  m.score >= 70 ? "bg-green-500/20 border border-green-500/40" :
-                  m.score >= 50 ? "bg-yellow-500/20 border border-yellow-500/40" :
-                  "bg-slate-700/40 border border-slate-600/40"
+              <div key={m.match_id}
+                className="rounded-2xl border transition-all duration-200 p-5 flex gap-4 items-start hover:border-indigo-400/40"
+                style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+
+                {/* Score badge */}
+                <div className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center shadow-md ${SCORE_GLOW(m.score)} ${
+                  m.score >= 85 ? "bg-emerald-500/15 border border-emerald-500/40" :
+                  m.score >= 70 ? "bg-green-500/15 border border-green-500/40" :
+                  m.score >= 50 ? "bg-yellow-500/15 border border-yellow-500/40" :
+                  "bg-slate-100 dark:bg-slate-700/40 border border-slate-300 dark:border-slate-600/40"
                 }`}>
                   <span className={`text-base font-black ${SCORE_COLOR(m.score)}`}>{Math.round(m.score)}%</span>
                 </div>
@@ -258,10 +208,10 @@ export default function Dashboard() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-bold text-white text-base leading-snug truncate">{m.job?.title ?? "—"}</p>
-                      <p className="text-slate-400 text-sm mt-0.5">
+                      <p className="font-bold text-base leading-snug truncate">{m.job?.title ?? "—"}</p>
+                      <p className="text-[var(--text-muted)] text-sm mt-0.5">
                         {m.job?.company ?? "—"}
-                        {m.job?.location ? <span className="text-slate-600 mx-1.5">·</span> : ""}
+                        {m.job?.location && <span className="mx-1.5 opacity-40">·</span>}
                         {m.job?.location ?? ""}
                       </p>
                     </div>
@@ -270,20 +220,18 @@ export default function Dashboard() {
                     </span>
                   </div>
 
-                  {/* Match score bar */}
+                  {/* Score bar */}
                   <div className="mt-3 flex items-center gap-3">
-                    <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-700 ${
-                          m.score >= 85 ? "bg-gradient-to-r from-emerald-500 to-teal-400" :
-                          m.score >= 70 ? "bg-gradient-to-r from-green-500 to-emerald-400" :
-                          m.score >= 50 ? "bg-gradient-to-r from-yellow-500 to-amber-400" :
-                          "bg-slate-600"
-                        }`}
-                        style={{ width: `${m.score}%` }}
-                      />
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden"
+                      style={{ background: "var(--border)" }}>
+                      <div className={`h-full rounded-full transition-all duration-700 ${
+                        m.score >= 85 ? "bg-gradient-to-r from-emerald-500 to-teal-400" :
+                        m.score >= 70 ? "bg-gradient-to-r from-green-500 to-emerald-400" :
+                        m.score >= 50 ? "bg-gradient-to-r from-yellow-500 to-amber-400" :
+                        "bg-slate-400"
+                      }`} style={{ width: `${m.score}%` }} />
                     </div>
-                    <span className="text-xs text-slate-500 shrink-0">Match</span>
+                    <span className="text-xs text-[var(--text-muted)] shrink-0">Match</span>
                   </div>
                 </div>
               </div>
@@ -295,35 +243,34 @@ export default function Dashboard() {
         {activeTab === "applied" && (
           <div className="space-y-3">
             {applications.length === 0 ? (
-              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-16 text-center">
+              <div className="rounded-2xl border p-16 text-center"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
                 <div className="text-5xl mb-4">🚀</div>
-                <p className="text-white font-semibold text-lg mb-1">No applications yet</p>
-                <p className="text-slate-400 text-sm">Once your score clears 75%, the AI auto-applies on your behalf.</p>
+                <p className="font-semibold text-lg mb-1">No applications yet</p>
+                <p className="text-[var(--text-muted)] text-sm">Once your score clears 75%, the AI auto-applies on your behalf.</p>
               </div>
             ) : applications.map(a => (
-              <div
-                key={a.match_id}
-                className="rounded-2xl border border-green-500/20 bg-green-500/[0.04] hover:bg-green-500/[0.07] transition-all duration-200 p-5 flex gap-4 items-center"
-                style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}
-              >
-                <div className="w-10 h-10 rounded-xl bg-green-500/20 border border-green-500/40 flex items-center justify-center shrink-0">
-                  <span className="text-green-400 text-lg">✓</span>
+              <div key={a.match_id}
+                className="rounded-2xl border border-green-500/25 bg-green-50 dark:bg-green-500/[0.04] transition-all p-5 flex gap-4 items-center">
+                <div className="w-10 h-10 rounded-xl bg-green-500/15 border border-green-500/30 flex items-center justify-center shrink-0">
+                  <span className="text-green-500 text-lg">✓</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-white truncate">{a.job?.title ?? "—"}</p>
-                  <p className="text-slate-400 text-sm mt-0.5">{a.job?.company ?? "—"}{a.job?.location ? ` · ${a.job.location}` : ""}</p>
+                  <p className="font-bold truncate">{a.job?.title ?? "—"}</p>
+                  <p className="text-[var(--text-muted)] text-sm mt-0.5">
+                    {a.job?.company ?? "—"}{a.job?.location ? ` · ${a.job.location}` : ""}
+                  </p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-green-400 text-sm font-semibold">Applied</p>
+                  <p className="text-green-600 dark:text-green-400 text-sm font-semibold">Applied</p>
                   {a.applied_at && (
-                    <p className="text-slate-500 text-xs mt-0.5">{new Date(a.applied_at).toLocaleDateString()}</p>
+                    <p className="text-[var(--text-muted)] text-xs mt-0.5">{new Date(a.applied_at).toLocaleDateString()}</p>
                   )}
                 </div>
               </div>
             ))}
           </div>
         )}
-
       </div>
     </div>
   );
