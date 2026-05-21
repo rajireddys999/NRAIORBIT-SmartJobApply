@@ -40,7 +40,7 @@ async def upload(
 
     # Trigger async matching in background
     from backend.celery_app import celery_app
-    celery_app.send_task("agents.resume_matcher.run_matching", args=[str(current_user.id), str(resume.id)])
+    celery_app.send_task("backend.agents.resume_matcher.run_matching", args=[str(current_user.id), str(resume.id)])
 
     return {"id": str(resume.id), "s3_url": resume.s3_url, "uploaded_at": resume.uploaded_at}
 
