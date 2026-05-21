@@ -1,22 +1,19 @@
 @import "tailwindcss";
 
-/* Class-based dark mode for next-themes */
-@custom-variant dark (&:where(.dark, .dark *));
-
-/* ── Theme tokens ───────────────────────────────── */
-:root {
-  --bg:         #f1f5f9;
+/* ── Theme tokens — driven by html.dark class (added by next-themes) ── */
+html {
+  --bg:         #ffffff;
   --bg-nav:     rgba(255,255,255,0.92);
-  --bg-card:    #ffffff;
+  --bg-card:    #f8fafc;
   --bg-input:   #f1f5f9;
   --text:       #0f172a;
   --text-muted: #64748b;
   --border:     rgba(0,0,0,0.09);
 }
 
-.dark {
+html.dark {
   --bg:         #020817;
-  --bg-nav:     rgba(4,5,15,0.85);
+  --bg-nav:     rgba(4,5,15,0.88);
   --bg-card:    rgba(255,255,255,0.03);
   --bg-input:   rgba(255,255,255,0.06);
   --text:       #f1f5f9;
@@ -27,60 +24,47 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
-  transition: background 0.2s, color 0.2s;
+  transition: background 0.25s ease, color 0.25s ease;
 }
 
-/* Neural network node pulse */
+/* ── Animations ─────────────────────────────────────── */
 @keyframes pulse-node {
   0%, 100% { opacity: 0.4; r: 3; }
-  50% { opacity: 1; r: 5; }
+  50%       { opacity: 1;   r: 5; }
 }
 
-/* Data packet traveling along edges */
 @keyframes travel {
   0%   { stroke-dashoffset: 200; opacity: 0; }
   10%  { opacity: 1; }
   90%  { opacity: 1; }
-  100% { stroke-dashoffset: 0; opacity: 0; }
+  100% { stroke-dashoffset: 0;   opacity: 0; }
 }
 
-/* Orbit ring spin */
-@keyframes spin-slow {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
+@keyframes spin-slow    { to { transform: rotate(360deg);  } }
+@keyframes spin-reverse { to { transform: rotate(-360deg); } }
 
-@keyframes spin-reverse {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(-360deg); }
-}
-
-/* Glow pulse on logo text */
 @keyframes glow {
   0%, 100% { text-shadow: 0 0 8px rgba(99,102,241,0.5); }
   50%       { text-shadow: 0 0 24px rgba(99,102,241,1), 0 0 48px rgba(139,92,246,0.6); }
 }
 
-/* Scan line sweep */
 @keyframes scan {
   0%   { transform: translateY(-100%); opacity: 0; }
   10%  { opacity: 0.6; }
   90%  { opacity: 0.6; }
-  100% { transform: translateY(100%); opacity: 0; }
+  100% { transform: translateY(100%);  opacity: 0; }
 }
 
-/* Floating card lift */
 @keyframes float {
-  0%, 100% { transform: translateY(0px); }
+  0%, 100% { transform: translateY(0px);  }
   50%       { transform: translateY(-6px); }
 }
 
-.animate-glow       { animation: glow 3s ease-in-out infinite; }
-.animate-spin-slow  { animation: spin-slow 12s linear infinite; }
-.animate-spin-rev   { animation: spin-reverse 18s linear infinite; }
-.animate-float      { animation: float 4s ease-in-out infinite; }
-.animate-scan       { animation: scan 6s ease-in-out infinite; }
+.animate-glow      { animation: glow 3s ease-in-out infinite; }
+.animate-spin-slow { animation: spin-slow 12s linear infinite; }
+.animate-spin-rev  { animation: spin-reverse 18s linear infinite; }
+.animate-float     { animation: float 4s ease-in-out infinite; }
+.animate-scan      { animation: scan 6s ease-in-out infinite; }
 
-.node { animation: pulse-node 2s ease-in-out infinite; }
+.node   { animation: pulse-node 2s ease-in-out infinite; }
 .packet { animation: travel 3s linear infinite; stroke-dasharray: 200; }

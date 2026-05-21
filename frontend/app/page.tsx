@@ -64,10 +64,11 @@ const FEATURES = [
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-[#020817] text-white overflow-x-hidden">
+    <div className="min-h-screen overflow-x-hidden" style={{ background: "var(--bg)", color: "var(--text)" }}>
 
       {/* ── Nav ── */}
-      <nav className="fixed top-0 inset-x-0 z-50 border-b border-white/5 bg-[#020817]/80 backdrop-blur-md">
+      <nav className="fixed top-0 inset-x-0 z-50 border-b backdrop-blur-md"
+        style={{ background: "var(--bg-nav)", borderColor: "var(--border)" }}>
         <div className="max-w-6xl mx-auto px-6 py-3 flex justify-between items-center">
           <Logo size="sm" />
           <div className="flex items-center gap-3">
@@ -101,7 +102,7 @@ export default function Home() {
               <br />while you sleep.
             </h1>
 
-            <p className="text-slate-400 text-lg leading-relaxed mb-10 max-w-xl mx-auto lg:mx-0">
+            <p className="text-lg leading-relaxed mb-10 max-w-xl mx-auto lg:mx-0" style={{ color: "var(--text-muted)" }}>
               Upload your resume once. Our AI scrapes US job boards every 30 minutes,
               scores each listing against your profile, and auto-applies to every match
               above your threshold — no clicks required.
@@ -149,14 +150,14 @@ export default function Home() {
       </section>
 
       {/* ── Stats ── */}
-      <section className="py-12 border-y border-white/5 bg-white/2">
+      <section className="py-12 border-y" style={{ borderColor: "var(--border)" }}>
         <div className="max-w-4xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8">
           {STATS.map(s => (
             <div key={s.label} className="text-center">
               <div className="text-4xl font-black bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
                 {s.value}
               </div>
-              <div className="text-slate-500 text-sm mt-1 uppercase tracking-wide">{s.label}</div>
+              <div className="text-sm mt-1 uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -171,7 +172,7 @@ export default function Home() {
               Zero effort.
             </span>
           </h2>
-          <p className="text-slate-400 max-w-xl mx-auto">
+          <p className="max-w-xl mx-auto" style={{ color: "var(--text-muted)" }}>
             A fully autonomous pipeline — from scraping to applying to emailing — running on Celery workers 24/7.
           </p>
         </div>
@@ -185,7 +186,7 @@ export default function Home() {
             >
               <div className="text-indigo-400 mb-4">{f.icon}</div>
               <h3 className="text-xl font-bold mb-3">{f.title}</h3>
-              <p className="text-slate-400 leading-relaxed">{f.desc}</p>
+              <p className="leading-relaxed" style={{ color: "var(--text-muted)" }}>{f.desc}</p>
               {/* Corner accent */}
               <div className="absolute top-4 right-4 w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500/10 to-purple-500/10 blur-lg" />
             </div>
@@ -194,7 +195,7 @@ export default function Home() {
       </section>
 
       {/* ── How it works ── */}
-      <section className="py-20 px-6 bg-gradient-to-b from-transparent to-indigo-950/30">
+      <section className="py-20 px-6">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-black mb-16">
             How{" "}
@@ -214,10 +215,11 @@ export default function Home() {
                 {i < 3 && (
                   <div className="hidden md:block absolute top-8 right-0 w-px h-16 bg-gradient-to-b from-indigo-500/50 to-transparent translate-x-1/2 z-10" />
                 )}
-                <div className="bg-slate-900/60 border border-white/8 rounded-2xl p-6 mx-2 h-full">
+                <div className="rounded-2xl p-6 mx-2 h-full border"
+                  style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
                   <div className="text-4xl font-black text-indigo-500/40 mb-3">{s.step}</div>
                   <h3 className="font-bold text-lg mb-2">{s.title}</h3>
-                  <p className="text-slate-400 text-sm">{s.desc}</p>
+                  <p className="text-sm" style={{ color: "var(--text-muted)" }}>{s.desc}</p>
                 </div>
               </div>
             ))}
@@ -238,7 +240,7 @@ export default function Home() {
               handle your job search?
             </span>
           </h2>
-          <p className="text-slate-400 mb-10 text-lg">
+          <p className="mb-10 text-lg" style={{ color: "var(--text-muted)" }}>
             Create your account, upload your resume, and wake up to applications already sent.
           </p>
           <Link href="/register"
@@ -250,14 +252,14 @@ export default function Home() {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-white/5 py-8 px-6">
+      <footer className="border-t py-8 px-6" style={{ borderColor: "var(--border)" }}>
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <Logo size="sm" />
-          <p className="text-slate-600 text-sm">© 2026 NRAIORBIT. All rights reserved.</p>
-          <div className="flex gap-6 text-slate-500 text-sm">
-            <Link href="/login" className="hover:text-white transition">Login</Link>
-            <Link href="/register" className="hover:text-white transition">Register</Link>
-            <Link href="/jobs" className="hover:text-white transition">Jobs</Link>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>© 2026 NRAIORBIT. All rights reserved.</p>
+          <div className="flex gap-6 text-sm" style={{ color: "var(--text-muted)" }}>
+            <Link href="/login" className="hover:text-indigo-500 transition">Login</Link>
+            <Link href="/register" className="hover:text-indigo-500 transition">Register</Link>
+            <Link href="/jobs" className="hover:text-indigo-500 transition">Jobs</Link>
           </div>
         </div>
       </footer>
