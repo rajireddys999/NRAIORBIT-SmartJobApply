@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     supabase_service_key: str = ""
     supabase_storage_bucket: str = "resumes"
 
+    # Apify (job scraping)
+    apify_api_token: str = ""
+
     # SendGrid
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = "noreply@smartjobapply.com"
