@@ -9,7 +9,12 @@ from datetime import datetime, timezone
 from celery import shared_task
 from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
-from playwright.async_api import async_playwright, TimeoutError as PWTimeout
+
+try:
+    from playwright.async_api import async_playwright, TimeoutError as PWTimeout
+    _PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    _PLAYWRIGHT_AVAILABLE = False
 
 from backend.celery_app import celery_app
 from backend.config import settings
@@ -34,6 +39,8 @@ async def _apply_to_job(job: Job, resume: Resume, user: User) -> bool:
     NOTE: Real implementation must handle CAPTCHA, auth walls, and site-specific forms.
           This scaffold handles the common Easy Apply / simple form pattern.
     """
+    if not _PLAYWRIGHT_AVAILABLE:
+        return False
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
