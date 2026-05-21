@@ -1,10 +1,10 @@
 export default function Logo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
-  const scale = size === "lg" ? 1 : size === "sm" ? 0.6 : 0.8;
+  const scale = size === "lg" ? 1.2 : size === "sm" ? 0.9 : 1;
   return (
     <svg
-      width={220 * scale}
-      height={52 * scale}
-      viewBox="0 0 220 52"
+      width={224 * scale}
+      height={56 * scale}
+      viewBox="0 0 224 56"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-label="NRAIORBIT SmartJobApply"
@@ -45,26 +45,26 @@ export default function Logo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
       {/* NRAIORBIT */}
       <text
         x="56"
-        y="20"
+        y="21"
         fontFamily="'Arial Black', Arial, sans-serif"
         fontWeight="900"
-        fontSize="13"
-        letterSpacing="2"
+        fontSize="16"
+        letterSpacing="2.5"
         fill="url(#textGrad)"
       >
         NRAIORBIT
       </text>
 
       {/* Divider line */}
-      <line x1="56" y1="24" x2="214" y2="24" stroke="#6366f1" strokeWidth="0.6" opacity="0.6" />
+      <line x1="56" y1="26" x2="216" y2="26" stroke="#6366f1" strokeWidth="0.7" opacity="0.6" />
 
       {/* SmartJobApply */}
       <text
         x="56"
-        y="40"
+        y="44"
         fontFamily="Arial, sans-serif"
         fontWeight="700"
-        fontSize="16"
+        fontSize="18"
         fill="white"
       >
         Smart
