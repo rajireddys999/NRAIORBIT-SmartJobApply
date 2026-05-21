@@ -9,6 +9,11 @@ html {
   --text:       #0f172a;
   --text-muted: #64748b;
   --border:     rgba(0,0,0,0.09);
+
+  /* Logo colours (light mode) */
+  --logo-brand-a: #3730a3;
+  --logo-brand-b: #6d28d9;
+  --logo-sub:     #1e1b4b;
 }
 
 html.dark {
@@ -19,6 +24,11 @@ html.dark {
   --text:       #f1f5f9;
   --text-muted: #94a3b8;
   --border:     rgba(255,255,255,0.08);
+
+  /* Logo colours (dark mode) */
+  --logo-brand-a: #e0e7ff;
+  --logo-brand-b: #c4b5fd;
+  --logo-sub:     #ffffff;
 }
 
 body {
