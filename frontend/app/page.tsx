@@ -91,12 +91,7 @@ export default function Home() {
               AI-POWERED · 24/7 AUTONOMOUS
             </div>
 
-            {/* Brand */}
-            <div className="mb-2">
-              <Logo size="lg" />
-            </div>
-
-            <h1 className="text-4xl lg:text-6xl font-black leading-tight mt-4 mb-6">
+            <h1 className="text-4xl lg:text-6xl font-black leading-tight mb-6">
               Apply to{" "}
               <span className="bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent animate-glow">
                 hundreds of jobs
