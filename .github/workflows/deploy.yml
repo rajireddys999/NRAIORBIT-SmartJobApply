@@ -55,14 +55,17 @@ jobs:
       - name: Deploy backend service
         run: railway up --service backend --detach
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_TOKEN:      ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: 13d683de-fb50-40b9-9c5b-14968fd1effb
 
       - name: Deploy worker service
         run: railway up --service worker --detach
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_TOKEN:      ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: 13d683de-fb50-40b9-9c5b-14968fd1effb
 
       - name: Deploy beat service
         run: railway up --service beat --detach
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_TOKEN:      ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: 13d683de-fb50-40b9-9c5b-14968fd1effb
