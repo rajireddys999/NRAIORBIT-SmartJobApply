@@ -34,11 +34,12 @@ async def _init_supabase_storage():
         from supabase import create_client
         client = create_client(settings.supabase_url, settings.supabase_service_key)
         bucket = settings.supabase_storage_bucket
-        try:
+        existing = [b.name for b in client.storage.list_buckets()]
+        if bucket in existing:
+            logger.info("Supabase bucket '%s' already exists — skipping creation.", bucket)
+        else:
             client.storage.create_bucket(bucket, options={"public": False})
             logger.info("Supabase bucket '%s' created.", bucket)
-        except Exception:
-            logger.info("Supabase bucket '%s' already exists.", bucket)
     except Exception as exc:
         logger.warning("Supabase storage init skipped: %s", exc)
 

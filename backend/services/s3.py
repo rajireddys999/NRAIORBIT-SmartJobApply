@@ -24,11 +24,9 @@ def upload_resume(data: bytes, filename: str, user_id: str) -> str:
     bucket = settings.supabase_storage_bucket
 
     client = _get_client()
-    # Create bucket if it doesn't exist (idempotent)
-    try:
+    existing = [b.name for b in client.storage.list_buckets()]
+    if bucket not in existing:
         client.storage.create_bucket(bucket, options={"public": False})
-    except Exception:
-        pass  # bucket already exists
 
     client.storage.from_(bucket).upload(
         path=path,
