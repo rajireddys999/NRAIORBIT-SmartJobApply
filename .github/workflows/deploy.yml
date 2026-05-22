@@ -1,11 +1,15 @@
-name: Deploy — Netlify + Railway
+name: Deploy — Netlify
+
+# Railway auto-deploys via its native GitHub integration.
+# Connect each service in Railway dashboard:
+#   Service → Settings → Source → Connect Repo → select branch: main
+# No token or secret needed here for Railway.
 
 on:
   push:
     branches: [main]
 
 jobs:
-  # ── 1. Deploy frontend → Netlify ────────────────────────────
   deploy-frontend:
     name: Frontend → Netlify
     runs-on: ubuntu-latest
@@ -28,7 +32,7 @@ jobs:
       - name: Build Next.js
         run: npm run build
         env:
-          NEXT_PUBLIC_API_URL: ""   # empty = use /api Netlify proxy
+          NEXT_PUBLIC_API_URL: ""
 
       - name: Deploy to Netlify
         uses: nwtgck/actions-netlify@v3
@@ -41,20 +45,3 @@ jobs:
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID:    ${{ secrets.NETLIFY_SITE_ID }}
-
-  # ── 2. Deploy backend → Railway (via deploy hooks) ──────────
-  # Deploy hooks are set up per-service in Railway:
-  # Service → Settings → Deploy → Deploy Hooks → Add hook
-  # Add each hook URL as a GitHub secret (no auth token needed).
-  deploy-backend:
-    name: Backend → Railway
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger backend redeploy
-        run: curl -sS -X POST "${{ secrets.RAILWAY_BACKEND_HOOK }}"
-
-      - name: Trigger worker redeploy
-        run: curl -sS -X POST "${{ secrets.RAILWAY_WORKER_HOOK }}"
-
-      - name: Trigger beat redeploy
-        run: curl -sS -X POST "${{ secrets.RAILWAY_BEAT_HOOK }}"
