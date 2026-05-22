@@ -6,13 +6,17 @@ function authHeaders(token: string) {
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
+async function extractError(res: Response, fallback: string): Promise<string> {
+  try { return (await res.json()).detail ?? fallback; } catch { return res.text().catch(() => fallback); }
+}
+
 export async function register(email: string, name: string, password: string) {
   const res = await fetch(`${BASE}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, name, password }),
   });
-  if (!res.ok) throw new Error((await res.json()).detail ?? "Registration failed");
+  if (!res.ok) throw new Error(await extractError(res, "Registration failed"));
   return res.json() as Promise<{
     status: "active" | "pending";
     role: string;
@@ -41,7 +45,7 @@ export async function uploadResume(token: string, file: File) {
     headers: { Authorization: `Bearer ${token}` },
     body: form,
   });
-  if (!res.ok) throw new Error((await res.json()).detail ?? "Upload failed");
+  if (!res.ok) throw new Error(await extractError(res, "Upload failed"));
   return res.json();
 }
 

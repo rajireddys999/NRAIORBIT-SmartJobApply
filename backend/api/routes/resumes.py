@@ -1,3 +1,4 @@
+import logging
 import uuid
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from backend.services.s3 import upload_resume, get_presigned_url
 from backend.services.resume_parser import parse_pdf_bytes
 from backend.services.embeddings import embed
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -24,7 +26,15 @@ async def upload(
         raise HTTPException(status_code=400, detail="Only PDF resumes are accepted")
 
     raw = await file.read()
-    s3_url = upload_resume(raw, file.filename or "resume.pdf", str(current_user.id))
+
+    # Supabase storage is optional — matching still works without it
+    filename = file.filename or "resume.pdf"
+    try:
+        s3_url = upload_resume(raw, filename, str(current_user.id))
+    except Exception as exc:
+        logger.warning("Resume storage skipped (Supabase unavailable): %s", exc)
+        s3_url = f"local://{current_user.id}/{filename}"
+
     parsed_text = parse_pdf_bytes(raw)
     embedding = await embed(parsed_text)
 
