@@ -110,6 +110,17 @@ export async function adminApprove(token: string, userId: string) {
   return res.json();
 }
 
+export async function adminTaskStatus(token: string, taskId: string) {
+  const res = await fetch(`${BASE}/api/admin/task/${taskId}`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("Failed to fetch task status");
+  return res.json() as Promise<{
+    task_id: string;
+    state: "PENDING" | "STARTED" | "SUCCESS" | "FAILURE" | "RETRY";
+    result?: { fetched: number; saved: number; source: string };
+    error?: string;
+  }>;
+}
+
 export async function adminRevoke(token: string, userId: string) {
   const res = await fetch(`${BASE}/api/admin/users/${userId}/revoke`, {
     method: "POST", headers: authHeaders(token),

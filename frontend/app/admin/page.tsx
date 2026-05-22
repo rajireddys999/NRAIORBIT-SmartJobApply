@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getToken, getRole, clearToken } from "@/lib/auth";
-import { adminGetUsers, adminGetStats, adminApprove, adminRevoke, refreshJobs } from "@/lib/api";
+import { adminGetUsers, adminGetStats, adminApprove, adminRevoke, refreshJobs, adminTaskStatus } from "@/lib/api";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -46,8 +46,11 @@ export default function AdminPage() {
   const [filter, setFilter] = useState<FilterTab>("all");
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshMsg, setRefreshMsg] = useState("");
+
+  type RefreshStatus = "idle" | "queued" | "running" | "done" | "failed";
+  const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>("idle");
+  const [refreshResult, setRefreshResult] = useState<{ fetched: number; saved: number } | null>(null);
+  const [refreshError, setRefreshError] = useState("");
 
   useEffect(() => {
     const token = getToken();
@@ -84,15 +87,41 @@ export default function AdminPage() {
 
   async function handleRefreshJobs() {
     const token = getToken()!;
-    setRefreshing(true);
-    setRefreshMsg("");
+    setRefreshStatus("queued");
+    setRefreshResult(null);
+    setRefreshError("");
     try {
-      await refreshJobs(token);
-      setRefreshMsg("Job fetch queued — all 5 sources running. New jobs appear within 2–3 minutes.");
+      const { task_id } = await refreshJobs(token);
+      setRefreshStatus("running");
+      // Poll every 3 s until the task finishes (max 3 min)
+      const deadline = Date.now() + 3 * 60 * 1000;
+      const poll = async () => {
+        if (Date.now() > deadline) {
+          setRefreshStatus("failed");
+          setRefreshError("Timed out — task still running in background.");
+          return;
+        }
+        try {
+          const status = await adminTaskStatus(token, task_id);
+          if (status.state === "SUCCESS") {
+            setRefreshStatus("done");
+            setRefreshResult(status.result ?? null);
+            // Refresh stats so job count updates
+            adminGetStats(token).then(setStats).catch(() => {});
+          } else if (status.state === "FAILURE") {
+            setRefreshStatus("failed");
+            setRefreshError(status.error ?? "Task failed.");
+          } else {
+            setTimeout(poll, 3000);
+          }
+        } catch {
+          setTimeout(poll, 3000);
+        }
+      };
+      setTimeout(poll, 3000);
     } catch {
-      setRefreshMsg("Failed to queue refresh. Try again.");
-    } finally {
-      setRefreshing(false);
+      setRefreshStatus("failed");
+      setRefreshError("Failed to queue refresh. Try again.");
     }
   }
 
@@ -143,21 +172,48 @@ export default function AdminPage() {
           <div className="flex flex-col items-end gap-2 shrink-0">
             <button
               onClick={handleRefreshJobs}
-              disabled={refreshing}
+              disabled={refreshStatus === "queued" || refreshStatus === "running"}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                refreshing
+                refreshStatus === "queued" || refreshStatus === "running"
                   ? "bg-indigo-400/30 text-indigo-300 cursor-wait"
                   : "bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/25"
               }`}
             >
-              {refreshing ? "Queuing…" : "↺ Refresh Jobs"}
+              {refreshStatus === "queued" && (
+                <span className="w-3.5 h-3.5 border-2 border-indigo-300/40 border-t-indigo-300 rounded-full animate-spin" />
+              )}
+              {refreshStatus === "running" && (
+                <span className="w-3.5 h-3.5 border-2 border-indigo-300/40 border-t-indigo-300 rounded-full animate-spin" />
+              )}
+              {refreshStatus === "queued" ? "Queuing…"
+                : refreshStatus === "running" ? "Fetching jobs…"
+                : "↺ Refresh Jobs"}
             </button>
-            {refreshMsg && (
-              <p className={`text-xs text-right max-w-xs ${
-                refreshMsg.startsWith("Failed") ? "text-red-500" : "text-indigo-400"
+
+            {/* Status panel */}
+            {refreshStatus !== "idle" && (
+              <div className={`text-xs rounded-xl px-3 py-2 border max-w-xs text-right ${
+                refreshStatus === "done"
+                  ? "bg-green-500/10 border-green-500/25 text-green-600 dark:text-green-400"
+                  : refreshStatus === "failed"
+                  ? "bg-red-500/10 border-red-500/25 text-red-500"
+                  : "bg-indigo-500/10 border-indigo-500/25 text-indigo-400"
               }`}>
-                {refreshMsg}
-              </p>
+                {refreshStatus === "queued" && "Queuing task…"}
+                {refreshStatus === "running" && (
+                  <span>Fetching from all sources<span className="animate-pulse">…</span><br/>
+                    <span className="opacity-60">Greenhouse · Lever · Ashby · The Muse · Arbeitnow · RemoteOK · LinkedIn</span>
+                  </span>
+                )}
+                {refreshStatus === "done" && refreshResult && (
+                  <span>
+                    ✅ Done — <strong>{refreshResult.saved} new jobs</strong> saved
+                    <br /><span className="opacity-70">{refreshResult.fetched} fetched total</span>
+                  </span>
+                )}
+                {refreshStatus === "done" && !refreshResult && "✅ Completed"}
+                {refreshStatus === "failed" && `❌ ${refreshError}`}
+              </div>
             )}
           </div>
         </div>

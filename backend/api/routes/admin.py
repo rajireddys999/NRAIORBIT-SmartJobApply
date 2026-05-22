@@ -67,6 +67,20 @@ async def revoke_user(
     return {"id": str(user.id), "status": "revoked"}
 
 
+@router.get("/task/{task_id}")
+async def task_status(task_id: str, admin: User = Depends(require_admin)):
+    """Poll Celery task state by ID — used by admin refresh status indicator."""
+    from backend.celery_app import celery_app
+    result = celery_app.AsyncResult(task_id)
+    state = result.state  # PENDING | STARTED | SUCCESS | FAILURE | RETRY
+    payload: dict = {"task_id": task_id, "state": state}
+    if state == "SUCCESS":
+        payload["result"] = result.result  # {"fetched": N, "saved": N, "source": "..."}
+    elif state == "FAILURE":
+        payload["error"] = str(result.result)
+    return payload
+
+
 @router.get("/stats")
 async def admin_stats(
     admin: User = Depends(require_admin),
