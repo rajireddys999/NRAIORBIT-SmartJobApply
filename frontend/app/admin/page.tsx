@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getToken, getRole, clearToken } from "@/lib/auth";
-import { adminGetUsers, adminGetStats, adminApprove, adminRevoke, refreshJobs, adminTaskStatus } from "@/lib/api";
+import { adminGetUsers, adminGetStats, adminApprove, adminRevoke, refreshJobs, adminTaskStatus, adminGetEmployeeResumes, adminGetEmployeeResume } from "@/lib/api";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -38,6 +38,12 @@ const CARD_BG: Record<string, string> = {
 };
 
 type FilterTab = "all" | "pending" | "active" | "revoked";
+type AdminTab = "employees" | "resumes";
+
+type EmployeeResume = {
+  id: string; name: string; email: string; status: string;
+  resume: { id: string; filename: string; uploaded_at: string; download_url: string; has_embedding: boolean } | null;
+};
 
 export default function AdminPage() {
   const router = useRouter();
@@ -46,6 +52,10 @@ export default function AdminPage() {
   const [filter, setFilter] = useState<FilterTab>("all");
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+  const [adminTab, setAdminTab] = useState<AdminTab>("employees");
+  const [empResumes, setEmpResumes] = useState<EmployeeResume[]>([]);
+  const [resumesLoading, setResumesLoading] = useState(false);
+  const [viewingResume, setViewingResume] = useState<string | null>(null);
 
   type RefreshStatus = "idle" | "queued" | "running" | "done" | "failed";
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>("idle");
@@ -122,6 +132,31 @@ export default function AdminPage() {
     } catch {
       setRefreshStatus("failed");
       setRefreshError("Failed to queue refresh. Try again.");
+    }
+  }
+
+  async function handleLoadResumes() {
+    const token = getToken()!;
+    setResumesLoading(true);
+    try {
+      const data = await adminGetEmployeeResumes(token);
+      setEmpResumes(data);
+    } finally {
+      setResumesLoading(false);
+    }
+  }
+
+  async function handleViewResume(userId: string) {
+    const token = getToken()!;
+    setViewingResume(userId);
+    try {
+      const { download_url } = await adminGetEmployeeResume(token, userId);
+      if (download_url) window.open(download_url, "_blank", "noopener,noreferrer");
+      else alert("Resume URL unavailable — Supabase storage may not be configured.");
+    } catch {
+      alert("No resume uploaded by this employee.");
+    } finally {
+      setViewingResume(null);
     }
   }
 
@@ -233,90 +268,167 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Filter tabs */}
-        <div className="flex gap-2 mb-5 flex-wrap">
-          {(["all", "pending", "active", "revoked"] as FilterTab[]).map(tab => (
-            <button key={tab} onClick={() => setFilter(tab)}
-              className={`px-4 py-1.5 rounded-xl text-sm font-semibold transition-all capitalize ${
-                filter === tab
+        {/* Admin tabs */}
+        <div className="flex gap-2 mb-6">
+          {(["employees", "resumes"] as AdminTab[]).map(tab => (
+            <button key={tab} onClick={() => {
+              setAdminTab(tab);
+              if (tab === "resumes" && empResumes.length === 0) handleLoadResumes();
+            }}
+              className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all capitalize ${
+                adminTab === tab
                   ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/25"
                   : "border text-[var(--text-muted)] hover:text-[var(--text)]"
               }`}
-              style={filter !== tab ? { borderColor: "var(--border)", background: "var(--bg-card)" } : {}}>
-              {tab}
-              {tab === "pending" && stats?.pending ? (
-                <span className="ml-1.5 bg-yellow-500 text-white text-xs rounded-full px-1.5 py-0.5">
-                  {stats.pending}
-                </span>
-              ) : null}
+              style={adminTab !== tab ? { borderColor: "var(--border)", background: "var(--bg-card)" } : {}}>
+              {tab === "employees" ? "👥 Employees" : "📄 Resumes"}
             </button>
           ))}
         </div>
 
-        {/* Employee table */}
-        {loading ? (
-          <div className="flex items-center gap-3 py-16 text-[var(--text-muted)]">
-            <div className="w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
-            Loading…
-          </div>
-        ) : (
-          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
-            {/* Table header */}
-            <div className="grid grid-cols-[1fr_1fr_120px_160px] gap-4 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+        {/* Resumes panel */}
+        {adminTab === "resumes" && (
+          <div className="rounded-2xl border overflow-hidden mb-8" style={{ borderColor: "var(--border)" }}>
+            <div className="grid grid-cols-[1fr_1fr_100px_120px] gap-4 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
               style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)" }}>
-              <span>Employee</span>
-              <span>Email</span>
-              <span>Status</span>
-              <span className="text-right">Actions</span>
+              <span>Employee</span><span>Resume</span><span>Uploaded</span><span className="text-right">Action</span>
             </div>
-
-            {filtered.length === 0 ? (
-              <div className="py-16 text-center text-[var(--text-muted)] text-sm"
-                style={{ background: "var(--bg-card)" }}>
-                No employees in this category.
+            {resumesLoading ? (
+              <div className="flex items-center gap-3 py-12 px-6 text-[var(--text-muted)]" style={{ background: "var(--bg-card)" }}>
+                <div className="w-4 h-4 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" /> Loading…
               </div>
-            ) : filtered.map((u, i) => (
-              <div
-                key={u.id}
-                className="grid grid-cols-[1fr_1fr_120px_160px] gap-4 px-5 py-4 items-center transition-colors hover:bg-indigo-500/[0.03]"
-                style={{
-                  background: "var(--bg-card)",
-                  borderTop: i > 0 ? "1px solid var(--border)" : undefined,
-                }}
-              >
+            ) : empResumes.length === 0 ? (
+              <div className="py-12 text-center text-[var(--text-muted)] text-sm" style={{ background: "var(--bg-card)" }}>
+                No employees found.
+              </div>
+            ) : empResumes.map((emp, i) => (
+              <div key={emp.id}
+                className="grid grid-cols-[1fr_1fr_100px_120px] gap-4 px-5 py-4 items-center"
+                style={{ background: "var(--bg-card)", borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
                 <div>
-                  <p className="font-semibold text-sm truncate">{u.name}</p>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    {new Date(u.created_at).toLocaleDateString()}
-                  </p>
+                  <p className="font-semibold text-sm truncate">{emp.name}</p>
+                  <p className="text-xs text-[var(--text-muted)] truncate">{emp.email}</p>
                 </div>
-                <p className="text-sm text-[var(--text-muted)] truncate">{u.email}</p>
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full w-fit capitalize ${STATUS_STYLE[u.status] ?? ""}`}>
-                  {u.status}
-                </span>
-                <div className="flex gap-2 justify-end">
-                  {u.status !== "active" && (
-                    <button
-                      onClick={() => handleApprove(u.id)}
-                      disabled={acting === u.id}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30 hover:bg-green-500/25 transition disabled:opacity-50"
-                    >
-                      {acting === u.id ? "…" : "Approve"}
-                    </button>
+                <div>
+                  {emp.resume ? (
+                    <>
+                      <p className="text-sm truncate">{emp.resume.filename}</p>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        {emp.resume.has_embedding ? "✅ Embedded" : "⚠ No embedding"}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-[var(--text-muted)] italic">No resume</p>
                   )}
-                  {u.status !== "revoked" && (
-                    <button
-                      onClick={() => handleRevoke(u.id)}
-                      disabled={acting === u.id}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/25 hover:bg-red-500/20 transition disabled:opacity-50"
-                    >
-                      {acting === u.id ? "…" : "Revoke"}
-                    </button>
+                </div>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {emp.resume ? new Date(emp.resume.uploaded_at).toLocaleDateString() : "—"}
+                </p>
+                <div className="flex justify-end">
+                  {emp.resume ? (
+                    emp.resume.download_url ? (
+                      <a
+                        href={emp.resume.download_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25 hover:bg-blue-500/20 transition"
+                      >
+                        View PDF
+                      </a>
+                    ) : (
+                      <button
+                        onClick={() => handleViewResume(emp.id)}
+                        disabled={viewingResume === emp.id}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25 hover:bg-blue-500/20 transition disabled:opacity-50"
+                      >
+                        {viewingResume === emp.id ? "…" : "View PDF"}
+                      </button>
+                    )
+                  ) : (
+                    <span className="text-xs text-[var(--text-muted)]">—</span>
                   )}
                 </div>
               </div>
             ))}
           </div>
+        )}
+
+        {/* Employees section */}
+        {adminTab === "employees" && (
+          <>
+            <div className="flex gap-2 mb-5 flex-wrap">
+              {(["all", "pending", "active", "revoked"] as FilterTab[]).map(tab => (
+                <button key={tab} onClick={() => setFilter(tab)}
+                  className={`px-4 py-1.5 rounded-xl text-sm font-semibold transition-all capitalize ${
+                    filter === tab
+                      ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/25"
+                      : "border text-[var(--text-muted)] hover:text-[var(--text)]"
+                  }`}
+                  style={filter !== tab ? { borderColor: "var(--border)", background: "var(--bg-card)" } : {}}>
+                  {tab}
+                  {tab === "pending" && stats?.pending ? (
+                    <span className="ml-1.5 bg-yellow-500 text-white text-xs rounded-full px-1.5 py-0.5">
+                      {stats.pending}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+
+            {loading ? (
+              <div className="flex items-center gap-3 py-16 text-[var(--text-muted)]">
+                <div className="w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+                Loading…
+              </div>
+            ) : (
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                <div className="grid grid-cols-[1fr_1fr_120px_160px] gap-4 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                  style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)" }}>
+                  <span>Employee</span><span>Email</span><span>Status</span>
+                  <span className="text-right">Actions</span>
+                </div>
+                {filtered.length === 0 ? (
+                  <div className="py-16 text-center text-[var(--text-muted)] text-sm" style={{ background: "var(--bg-card)" }}>
+                    No employees in this category.
+                  </div>
+                ) : filtered.map((u, i) => (
+                  <div key={u.id}
+                    className="grid grid-cols-[1fr_1fr_120px_160px] gap-4 px-5 py-4 items-center transition-colors hover:bg-indigo-500/[0.03]"
+                    style={{ background: "var(--bg-card)", borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
+                    <div>
+                      <p className="font-semibold text-sm truncate">{u.name}</p>
+                      <p className="text-xs text-[var(--text-muted)]">{new Date(u.created_at).toLocaleDateString()}</p>
+                    </div>
+                    <p className="text-sm text-[var(--text-muted)] truncate">{u.email}</p>
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full w-fit capitalize ${STATUS_STYLE[u.status] ?? ""}`}>
+                      {u.status}
+                    </span>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => handleViewResume(u.id)}
+                        disabled={viewingResume === u.id}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25 hover:bg-blue-500/20 transition disabled:opacity-50"
+                      >
+                        {viewingResume === u.id ? "…" : "Resume"}
+                      </button>
+                      {u.status !== "active" && (
+                        <button onClick={() => handleApprove(u.id)} disabled={acting === u.id}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30 hover:bg-green-500/25 transition disabled:opacity-50">
+                          {acting === u.id ? "…" : "Approve"}
+                        </button>
+                      )}
+                      {u.status !== "revoked" && (
+                        <button onClick={() => handleRevoke(u.id)} disabled={acting === u.id}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/25 hover:bg-red-500/20 transition disabled:opacity-50">
+                          {acting === u.id ? "…" : "Revoke"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

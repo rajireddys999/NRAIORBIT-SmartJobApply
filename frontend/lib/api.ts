@@ -190,6 +190,21 @@ export async function adminRevoke(token: string, userId: string) {
   return res.json();
 }
 
+export async function adminGetEmployeeResumes(token: string) {
+  const res = await fetch(`${BASE}/api/admin/employees/resumes`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("Failed to fetch employee resumes");
+  return res.json() as Promise<Array<{
+    id: string; name: string; email: string; status: string;
+    resume: { id: string; filename: string; uploaded_at: string; download_url: string; has_embedding: boolean } | null;
+  }>>;
+}
+
+export async function adminGetEmployeeResume(token: string, userId: string) {
+  const res = await fetch(`${BASE}/api/admin/employees/${userId}/resume`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("No resume found");
+  return res.json() as Promise<{ id: string; filename: string; uploaded_at: string; download_url: string }>;
+}
+
 // ── Candidate Profile ────────────────────────────────────────────────────────
 
 export interface CandidateProfile {

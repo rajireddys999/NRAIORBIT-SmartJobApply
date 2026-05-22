@@ -397,12 +397,37 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {r.download_url && (
+                      <a
+                        href={r.download_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold px-3 py-1 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25 hover:bg-blue-500/20 transition"
+                      >
+                        View
+                      </a>
+                    )}
+                    <label className="text-xs font-semibold px-3 py-1 rounded-lg bg-indigo-500/10 text-indigo-500 border border-indigo-500/25 hover:bg-indigo-500/20 transition cursor-pointer">
+                      Replace
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          await handleDeleteResume(r.id);
+                          doUpload(f);
+                        }}
+                        disabled={uploading || matching}
+                      />
+                    </label>
                     <button
                       onClick={() => handleRetryMatching(r.id)}
                       disabled={matching}
-                      className="text-xs font-semibold px-3 py-1 rounded-lg bg-indigo-500/10 text-indigo-500 border border-indigo-500/25 hover:bg-indigo-500/20 transition disabled:opacity-50"
+                      className="text-xs font-semibold px-3 py-1 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/25 hover:bg-violet-500/20 transition disabled:opacity-50"
                     >
-                      {matching ? "Matching…" : "Retry Match"}
+                      {matching ? "Matching…" : "Re-match"}
                     </button>
                     <button
                       onClick={() => handleDeleteResume(r.id)}

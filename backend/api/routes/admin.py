@@ -8,6 +8,7 @@ from backend.models.database import get_db
 from backend.models.user import User
 from backend.models.job import Job
 from backend.models.match import Match
+from backend.models.resume import Resume
 from backend.api.deps import require_admin
 
 router = APIRouter()
@@ -141,3 +142,84 @@ async def fix_embeddings(
     result = await db.execute(text("UPDATE jobs SET embedding = NULL"))
     await db.commit()
     return {"cleared": result.rowcount, "message": "Run job refresh to re-embed all jobs"}
+
+
+@router.get("/employees/resumes")
+async def all_employee_resumes(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return each active employee's latest resume with a signed download URL."""
+    from backend.services.s3 import get_presigned_url
+
+    result = await db.execute(
+        select(User).where(User.role == "employee").order_by(User.name)
+    )
+    employees = result.scalars().all()
+
+    rows = []
+    for emp in employees:
+        res_row = await db.execute(
+            select(Resume)
+            .where(Resume.user_id == emp.id)
+            .order_by(Resume.uploaded_at.desc())
+            .limit(1)
+        )
+        resume = res_row.scalar_one_or_none()
+        resume_info = None
+        if resume:
+            s3 = resume.s3_url or ""
+            filename = s3.rsplit("/", 1)[-1] if "/" in s3 else "resume.pdf"
+            try:
+                download_url = get_presigned_url(s3)
+            except Exception:
+                download_url = ""
+            resume_info = {
+                "id": str(resume.id),
+                "filename": filename,
+                "uploaded_at": resume.uploaded_at,
+                "download_url": download_url,
+                "has_embedding": resume.embedding is not None,
+            }
+        rows.append({
+            "id": str(emp.id),
+            "name": emp.name,
+            "email": emp.email,
+            "status": emp.status,
+            "resume": resume_info,
+        })
+    return rows
+
+
+@router.get("/employees/{user_id}/resume")
+async def employee_resume(
+    user_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the signed download URL for a specific employee's latest resume."""
+    from backend.services.s3 import get_presigned_url
+
+    res_row = await db.execute(
+        select(Resume)
+        .where(Resume.user_id == uuid.UUID(user_id))
+        .order_by(Resume.uploaded_at.desc())
+        .limit(1)
+    )
+    resume = res_row.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="No resume found for this employee")
+
+    s3 = resume.s3_url or ""
+    filename = s3.rsplit("/", 1)[-1] if "/" in s3 else "resume.pdf"
+    try:
+        download_url = get_presigned_url(s3)
+    except Exception:
+        download_url = ""
+
+    return {
+        "id": str(resume.id),
+        "filename": filename,
+        "uploaded_at": resume.uploaded_at,
+        "download_url": download_url,
+    }
