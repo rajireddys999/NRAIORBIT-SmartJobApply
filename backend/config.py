@@ -14,9 +14,6 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 1 week
 
-    # OpenAI
-    openai_api_key: str = ""
-
     # Supabase Storage
     supabase_url: str = ""
     supabase_service_key: str = ""
