@@ -144,6 +144,28 @@ async def fix_embeddings(
     return {"cleared": result.rowcount, "message": "Run job refresh to re-embed all jobs"}
 
 
+@router.post("/setup-storage")
+async def setup_storage(admin: User = Depends(require_admin)):
+    """Create the Supabase Storage bucket for resumes (idempotent — safe to call multiple times)."""
+    from backend.config import settings
+    from supabase import create_client
+
+    if not settings.supabase_url or not settings.supabase_service_key:
+        raise HTTPException(status_code=400, detail="SUPABASE_URL and SUPABASE_SERVICE_KEY are not configured on this server")
+
+    client = create_client(settings.supabase_url, settings.supabase_service_key)
+    bucket = settings.supabase_storage_bucket  # "resumes"
+
+    try:
+        client.storage.create_bucket(bucket, options={"public": False})
+        return {"status": "created", "bucket": bucket}
+    except Exception as e:
+        msg = str(e).lower()
+        if "already exists" in msg or "duplicate" in msg or "409" in msg:
+            return {"status": "already_exists", "bucket": bucket}
+        raise HTTPException(status_code=500, detail=f"Failed to create bucket: {e}")
+
+
 @router.get("/employees/resumes")
 async def all_employee_resumes(
     admin: User = Depends(require_admin),
