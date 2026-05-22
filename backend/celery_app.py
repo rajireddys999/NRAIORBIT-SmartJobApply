@@ -21,13 +21,13 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="UTC",
     enable_utc=True,
-    beat_schedule={
-        # All core sources every 30 min (Muse, Arbeitnow, RemoteOK,
-        # Greenhouse, Lever, Ashby, Indeed).
-        # LinkedIn excluded — pull manually via Admin Panel ↺ Refresh Jobs.
-        "fetch-core-jobs-every-30min": {
-            "task": "backend.agents.job_fetcher.fetch_core_jobs",
-            "schedule": crontab(minute="*/30"),
-        },
-    },
+    # All schedules disabled — use Admin Panel ↺ Refresh Jobs to fetch manually.
+    # To re-enable: uncomment and redeploy worker + beat services.
+    # beat_schedule={
+    #     "fetch-core-jobs-every-30min": {
+    #         "task": "backend.agents.job_fetcher.fetch_core_jobs",
+    #         "schedule": crontab(minute="*/30"),
+    #     },
+    # },
+    beat_schedule={},
 )
