@@ -26,9 +26,27 @@ async def _init_db_with_retry(attempts: int = 5, delay: float = 3.0):
                 await asyncio.sleep(delay)
 
 
+async def _init_supabase_storage():
+    try:
+        from backend.config import settings
+        if not settings.supabase_url or not settings.supabase_service_key:
+            return
+        from supabase import create_client
+        client = create_client(settings.supabase_url, settings.supabase_service_key)
+        bucket = settings.supabase_storage_bucket
+        try:
+            client.storage.create_bucket(bucket, options={"public": False})
+            logger.info("Supabase bucket '%s' created.", bucket)
+        except Exception:
+            logger.info("Supabase bucket '%s' already exists.", bucket)
+    except Exception as exc:
+        logger.warning("Supabase storage init skipped: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(_init_db_with_retry())
+    asyncio.create_task(_init_supabase_storage())
     yield
 
 
