@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getToken, getRole, clearToken } from "@/lib/auth";
-import { getMatches, getApplications, uploadResume, applyMatch, applyAllMatches, getResumes, deleteResume, resumeTaskStatus, retryMatching } from "@/lib/api";
+import { getMatches, getApplications, uploadResume, applyMatch, applyAllMatches, getResumes, deleteResume, resumeTaskStatus, retryMatching, getProfile, saveProfile, autoApply, resetMatches, CandidateProfile } from "@/lib/api";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -45,7 +45,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const STATS = (matches: any[], applications: any[], avgScore: string | null) => [
   { label: "Total Matches",  value: matches.length,                         icon: "🎯", color: "indigo"  },
-  { label: "Strong Matches", value: matches.filter(m => m.score >= 90).length, icon: "⚡", color: "emerald" },
+  { label: "Strong Matches", value: matches.filter(m => m.score >= 75).length, icon: "⚡", color: "emerald" },
   { label: "Jobs Applied",   value: applications.length,                    icon: "✅", color: "purple"  },
   { label: "Avg Score",      value: avgScore ? `${avgScore}%` : "—",        icon: "📊", color: "cyan"    },
 ];
@@ -71,6 +71,12 @@ export default function Dashboard() {
   const [applyMsg, setApplyMsg]         = useState("");
   const [resumes, setResumes]           = useState<any[]>([]);
   const [deletingResume, setDeletingResume] = useState<string | null>(null);
+  const [profile, setProfile]           = useState<CandidateProfile | null>(null);
+  const [profileOpen, setProfileOpen]   = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMsg, setProfileMsg]     = useState("");
+  const [profileDraft, setProfileDraft] = useState<Partial<CandidateProfile>>({});
+  const [autoApplying, setAutoApplying] = useState<string | null>(null);
   const [matching, setMatching]         = useState(false);
   const [matchProgress, setMatchProgress] = useState<{ scanned: number; total: number; matched: number; strong: number; status: string } | null>(null);
   const [loadError, setLoadError]       = useState("");
@@ -82,13 +88,16 @@ export default function Dashboard() {
     if (!token) { router.push("/login"); return; }
     setLoadingData(true);
     Promise.all([
-      getMatches(token, 50).catch((e) => { setLoadError(e.message || "Failed to load matches"); return []; }),
+      getMatches(token, 0).catch((e) => { setLoadError(e.message || "Failed to load matches"); return []; }),
       getApplications(token).catch(() => []),
       getResumes(token).catch(() => []),
-    ]).then(([m, a, r]) => {
+      getProfile(token).catch(() => null),
+    ]).then(([m, a, r, p]) => {
       setMatches(m);
       setApplications(a);
       setResumes(r);
+      if (p) { setProfile(p); setProfileDraft(p); }
+      else setProfileOpen(true); // auto-open if no profile yet
     }).finally(() => setLoadingData(false));
   }, [router]);
 
@@ -135,6 +144,59 @@ export default function Dashboard() {
       setUploadMsg(err.message || "Upload failed.");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleResetMatches() {
+    if (!confirm("Delete all current matches? You'll need to retry matching after.")) return;
+    const token = getToken()!;
+    try {
+      const { deleted } = await resetMatches(token);
+      setMatches([]);
+      setApplications([]);
+      setUploadSuccess(true);
+      setUploadMsg(`Cleared ${deleted} matches. Click Retry Match on your resume to re-run.`);
+    } catch (err: any) {
+      alert(err.message || "Failed to reset matches.");
+    }
+  }
+
+  async function handleAutoApply(matchId: string) {
+    const token = getToken()!;
+    setAutoApplying(matchId);
+    try {
+      const res = await autoApply(token, matchId);
+      setMatches(prev => prev.map(m =>
+        m.match_id === matchId ? { ...m, status: "applied", applied_at: new Date().toISOString() } : m
+      ));
+      if (res.method === "greenhouse_api" || res.method === "lever_api") {
+        setApplyMsg(`✅ Application submitted automatically via ${res.method === "greenhouse_api" ? "Greenhouse" : "Lever"} API.`);
+      } else if (res.job_url) {
+        window.open(res.job_url, "_blank", "noopener,noreferrer");
+        setApplyMsg("Job page opened — complete your application there. Marked as applied.");
+      } else {
+        setApplyMsg("Marked as applied.");
+      }
+    } catch (err: any) {
+      setApplyMsg(err.message || "Auto-apply failed.");
+    } finally {
+      setAutoApplying(null);
+    }
+  }
+
+  async function handleSaveProfile(e: React.FormEvent) {
+    e.preventDefault();
+    const token = getToken()!;
+    setProfileSaving(true); setProfileMsg("");
+    try {
+      const saved = await saveProfile(token, profileDraft as CandidateProfile);
+      setProfile(saved);
+      setProfileMsg("Profile saved.");
+      setTimeout(() => { setProfileOpen(false); setProfileMsg(""); }, 1200);
+    } catch (err: any) {
+      setProfileMsg(err.message || "Failed to save.");
+    } finally {
+      setProfileSaving(false);
     }
   }
 
@@ -356,6 +418,130 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* Candidate Profile */}
+        <div className="rounded-2xl border mb-8" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+          <button
+            className="w-full flex items-center justify-between px-6 py-4 text-left"
+            onClick={() => setProfileOpen(o => !o)}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-xl">👤</span>
+              <div>
+                <p className="font-semibold text-sm">
+                  {profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ""}` : "Candidate Profile"}
+                  {!profile?.first_name && <span className="ml-2 text-xs font-normal text-amber-500">⚠ Required for auto-apply</span>}
+                </p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {profile?.first_name ? `${profile.phone ?? ""} · ${profile.work_authorization ?? ""} · ${profile.city ?? ""}` : "Fill once — used to auto-submit job applications"}
+                </p>
+              </div>
+            </div>
+            <span className="text-[var(--text-muted)] text-sm">{profileOpen ? "▲" : "▼"}</span>
+          </button>
+
+          {profileOpen && (
+            <form onSubmit={handleSaveProfile} className="px-6 pb-6 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t" style={{ borderColor: "var(--border)" }}>
+              <div className="col-span-2 pt-4 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Personal Info</div>
+              {[
+                { label: "First Name *", key: "first_name", required: true },
+                { label: "Last Name *", key: "last_name", required: true },
+                { label: "Phone *", key: "phone", required: true },
+                { label: "LinkedIn URL", key: "linkedin_url" },
+                { label: "GitHub URL", key: "github_url" },
+                { label: "Portfolio / Website", key: "portfolio_url" },
+              ].map(({ label, key, required }) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">{label}</label>
+                  <input
+                    type="text"
+                    required={required}
+                    value={(profileDraft as any)[key] ?? ""}
+                    onChange={e => setProfileDraft(d => ({ ...d, [key]: e.target.value }))}
+                    className="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                  />
+                </div>
+              ))}
+
+              <div className="col-span-2 pt-2 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Location</div>
+              {[
+                { label: "City", key: "city" },
+                { label: "State", key: "state" },
+                { label: "Country", key: "country" },
+              ].map(({ label, key }) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">{label}</label>
+                  <input
+                    type="text"
+                    value={(profileDraft as any)[key] ?? ""}
+                    onChange={e => setProfileDraft(d => ({ ...d, [key]: e.target.value }))}
+                    className="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                  />
+                </div>
+              ))}
+
+              <div className="col-span-2 pt-2 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Work Authorization</div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Status</label>
+                <select
+                  value={profileDraft.work_authorization ?? ""}
+                  onChange={e => setProfileDraft(d => ({ ...d, work_authorization: e.target.value }))}
+                  className="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                >
+                  <option value="">Select…</option>
+                  <option value="citizen">US Citizen</option>
+                  <option value="permanent_resident">Permanent Resident (Green Card)</option>
+                  <option value="ead">EAD / OPT / STEM OPT</option>
+                  <option value="visa_h1b">H-1B Visa</option>
+                  <option value="visa_other">Other Visa</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-3 pt-5">
+                <input
+                  type="checkbox"
+                  id="sponsorship"
+                  checked={profileDraft.requires_sponsorship ?? false}
+                  onChange={e => setProfileDraft(d => ({ ...d, requires_sponsorship: e.target.checked }))}
+                  className="w-4 h-4 rounded"
+                />
+                <label htmlFor="sponsorship" className="text-sm">Requires sponsorship</label>
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Years of Experience</label>
+                <input
+                  type="number" min={0} max={40}
+                  value={profileDraft.years_experience ?? ""}
+                  onChange={e => setProfileDraft(d => ({ ...d, years_experience: parseInt(e.target.value) || undefined }))}
+                  className="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Short Summary (used in cover letters)</label>
+                <textarea
+                  rows={3}
+                  value={profileDraft.summary ?? ""}
+                  onChange={e => setProfileDraft(d => ({ ...d, summary: e.target.value }))}
+                  placeholder="e.g. Data engineer with 5 years experience in Python, Spark, and AWS..."
+                  className="w-full rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none"
+                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                />
+              </div>
+
+              <div className="col-span-2 flex items-center gap-3">
+                <button type="submit" disabled={profileSaving}
+                  className="px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-500 hover:bg-indigo-400 text-white transition disabled:opacity-50">
+                  {profileSaving ? "Saving…" : "Save Profile"}
+                </button>
+                {profileMsg && <span className="text-sm text-green-500">{profileMsg}</span>}
+              </div>
+            </form>
+          )}
+        </div>
+
         {/* Error banner */}
         {loadError && (
           <div className="mb-6 rounded-xl px-4 py-3 text-sm border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 flex items-center gap-2">
@@ -404,11 +590,17 @@ export default function Dashboard() {
                 </p>
                 <div className="flex gap-2">
                   <button
+                    onClick={handleResetMatches}
+                    className="px-4 py-1.5 rounded-xl text-sm font-semibold border text-red-500 border-red-500/30 bg-red-500/10 hover:bg-red-500/20 transition"
+                  >
+                    Reset Matches
+                  </button>
+                  <button
                     onClick={handleApplyAll}
                     disabled={applyingAll}
                     className="px-4 py-1.5 rounded-xl text-sm font-semibold bg-indigo-500 hover:bg-indigo-400 text-white transition disabled:opacity-50 disabled:cursor-wait"
                   >
-                    {applyingAll ? "Applying…" : "Apply All Matches"}
+                    {applyingAll ? "Applying…" : "Apply All (≥75%)"}
                   </button>
                 </div>
               </div>
@@ -502,11 +694,16 @@ export default function Dashboard() {
                       )}
                       {m.status === "pending" ? (
                         <button
-                          onClick={() => handleApply(m.match_id, m.job?.source_url)}
-                          disabled={applying === m.match_id}
-                          className="text-xs font-semibold px-3 py-1 rounded-lg bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30 hover:bg-green-500/25 transition disabled:opacity-50"
+                          onClick={() => handleAutoApply(m.match_id)}
+                          disabled={autoApplying === m.match_id}
+                          title={profile?.first_name ? "Auto-apply using your saved profile" : "Save your profile first to enable auto-apply"}
+                          className={`text-xs font-semibold px-3 py-1 rounded-lg border transition disabled:opacity-50 ${
+                            profile?.first_name
+                              ? "bg-green-500/15 text-green-600 dark:text-green-400 border-green-500/30 hover:bg-green-500/25"
+                              : "bg-slate-500/10 text-slate-500 border-slate-500/20 cursor-not-allowed"
+                          }`}
                         >
-                          {applying === m.match_id ? "…" : "Apply →"}
+                          {autoApplying === m.match_id ? "Applying…" : "Auto Apply →"}
                         </button>
                       ) : (
                         <span className="text-xs text-[var(--text-muted)]">Applied ✓</span>

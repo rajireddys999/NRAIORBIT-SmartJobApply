@@ -43,7 +43,7 @@ def run_matching(self, user_id: str, resume_id: str):
         jobs = db.execute(select(Job).where(Job.embedding.isnot(None))).scalars().all()
         total = len(jobs)
         matched = 0
-        strong = 0  # score >= 90
+        strong = 0  # score >= 75
 
         self.update_state(state="PROGRESS", meta={
             "scanned": 0, "total": total, "matched": 0, "strong": 0,
@@ -62,8 +62,8 @@ def run_matching(self, user_id: str, resume_id: str):
                 ))
             ).scalar_one_or_none()
 
-            if score < 50:
-                continue  # skip irrelevant matches
+            if score < 65:
+                continue  # skip low-relevance matches
 
             if existing:
                 existing.score = score
@@ -76,7 +76,7 @@ def run_matching(self, user_id: str, resume_id: str):
                 ))
                 matched += 1
 
-            if score >= 90:
+            if score >= 75:
                 strong += 1
 
             # Report progress every 25 jobs

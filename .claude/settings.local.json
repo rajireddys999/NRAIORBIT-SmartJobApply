@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(curl -s -X POST https://backboard.railway.app/graphql/v2 -H 'Authorization: Bearer 2b0ee41c-1b4f-424a-8542-eab07fe4efd5' -H 'Content-Type: application/json' -d '{\"query\":\"{ deploymentLogs\\(deploymentId: \\\\\"85562749-2934-4bfd-abf6-191880ad465a\\\\\", limit: 50\\) { message severity } }\"}')",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s -X POST https://backboard.railway.app/graphql/v2 -H 'Authorization: Bearer 2b0ee41c-1b4f-424a-8542-eab07fe4efd5' -H 'Content-Type: application/json' -d '{\"query\":\"mutation { serviceInstanceRedeploy\\(serviceId: \\\\\"__TRACKED_VAR__\\\\\", environmentId: \\\\\"10b275a6-6214-4409-a1b4-e6dc47d0443f\\\\\"\\) }\"}')",
+      "Bash(curl -s -X POST https://backboard.railway.app/graphql/v2 -H 'Authorization: Bearer 2b0ee41c-1b4f-424a-8542-eab07fe4efd5' -H 'Content-Type: application/json' -d '{\"query\":\"{ project\\(id: \\\\\"13d683de-fb50-40b9-9c5b-14968fd1effb\\\\\"\\) { deployments\\(first: 3\\) { edges { node { id status createdAt service { name } } } } } }\"}')"
+    ]
+  }
+}

@@ -37,6 +37,8 @@ class Base(DeclarativeBase):
 
 
 async def init_db():
+    # Import all models so SQLAlchemy knows their tables before create_all
+    from backend.models import user, job, resume, match, notification, profile  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # Idempotent migration: add role/status columns to existing users table.

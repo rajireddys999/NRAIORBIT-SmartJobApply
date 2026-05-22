@@ -74,6 +74,20 @@ async def apply_match(
     return {"match_id": match_id, "status": "applied"}
 
 
+@router.delete("/reset")
+async def reset_matches(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all matches for the current user so matching can be re-run fresh."""
+    from sqlalchemy import delete
+    result = await db.execute(
+        delete(Match).where(Match.user_id == current_user.id)
+    )
+    await db.commit()
+    return {"deleted": result.rowcount}
+
+
 @router.post("/apply-all")
 async def apply_all_matches(
     min_score: float = Query(90.0, ge=0, le=100),

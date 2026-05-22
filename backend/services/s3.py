@@ -38,6 +38,19 @@ def upload_resume(data: bytes, filename: str, user_id: str) -> str:
     return f"supabase://{bucket}/{path}"
 
 
+def get_resume_bytes(storage_ref: str) -> tuple[bytes, str]:
+    """Download resume bytes and return (bytes, filename). Raises if unavailable."""
+    if storage_ref.startswith("supabase://"):
+        _, rest = storage_ref.split("supabase://", 1)
+        bucket, path = rest.split("/", 1)
+        data = _get_client().storage.from_(bucket).download(path)
+        filename = path.rsplit("/", 1)[-1]
+        return data, filename
+    if storage_ref.startswith("local://"):
+        raise RuntimeError("Resume stored locally — Supabase not configured")
+    raise RuntimeError(f"Unknown storage scheme: {storage_ref}")
+
+
 def get_presigned_url(storage_ref: str, expires: int = 3600) -> str:
     """Return a short-lived signed URL from a supabase:// reference."""
     if not storage_ref.startswith("supabase://"):

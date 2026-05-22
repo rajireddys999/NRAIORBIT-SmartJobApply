@@ -108,6 +108,15 @@ export async function getMatches(token: string, minScore = 0) {
   return res.json();
 }
 
+export async function resetMatches(token: string) {
+  const res = await fetch(`${BASE}/api/matches/reset`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(await extractError(res, "Failed to reset matches"));
+  return res.json() as Promise<{ deleted: number }>;
+}
+
 export async function applyMatch(token: string, matchId: string) {
   const res = await fetch(`${BASE}/api/matches/${matchId}/apply`, {
     method: "POST",
@@ -179,4 +188,49 @@ export async function adminRevoke(token: string, userId: string) {
   });
   if (!res.ok) throw new Error("Failed to revoke user");
   return res.json();
+}
+
+// ── Candidate Profile ────────────────────────────────────────────────────────
+
+export interface CandidateProfile {
+  id?: string;
+  email?: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  linkedin_url?: string;
+  github_url?: string;
+  portfolio_url?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  work_authorization?: string;
+  requires_sponsorship?: boolean;
+  years_experience?: number;
+  summary?: string;
+}
+
+export async function getProfile(token: string): Promise<CandidateProfile | null> {
+  const res = await fetch(`${BASE}/api/profile/`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("Failed to fetch profile");
+  return res.json();
+}
+
+export async function saveProfile(token: string, data: CandidateProfile) {
+  const res = await fetch(`${BASE}/api/profile/`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await extractError(res, "Failed to save profile"));
+  return res.json() as Promise<CandidateProfile>;
+}
+
+export async function autoApply(token: string, matchId: string) {
+  const res = await fetch(`${BASE}/api/matches/${matchId}/auto-apply`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(await extractError(res, "Auto-apply failed"));
+  return res.json() as Promise<{ method: string; status?: string; job_url?: string; error?: string }>;
 }
