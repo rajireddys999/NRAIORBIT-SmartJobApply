@@ -1,6 +1,9 @@
 """
 Job Fetcher Agent — runs every 30 min via Celery Beat.
-Scrapes Indeed, LinkedIn (via Apify), deduplicates, stores jobs + embeddings.
+Uses three free public job APIs (no keys required):
+  - The Muse (themuse.com/api) — 1000 calls/day, US tech jobs
+  - Arbeitnow (arbeitnow.com/api) — unlimited, remote/EU jobs
+  - RemoteOK (remoteok.com/api)  — unlimited, remote tech jobs
 """
 import asyncio
 import httpx
@@ -9,107 +12,129 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.celery_app import celery_app
-from backend.config import settings
 from backend.models.job import Job
 
 
-INDEED_SEARCH_KEYWORDS = [
-    "software engineer",
-    "backend engineer",
-    "python developer",
-    "data scientist",
-    "machine learning engineer",
-]
-US_LOCATION = "United States"
+TECH_TAGS = ["python", "backend", "software-engineer", "data-science", "machine-learning"]
 
 
 def _get_sync_session():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+    from backend.config import settings
     engine = create_engine(settings.sync_database_url)
     return sessionmaker(bind=engine)()
 
 
-async def _scrape_indeed(keyword: str) -> list[dict]:
-    """Scrapes Indeed via their unofficial JSON search endpoint."""
-    jobs = []
-    async with httpx.AsyncClient(timeout=30) as client:
+async def _fetch_themuse(client: httpx.AsyncClient) -> list[dict]:
+    """The Muse public API — no key required, 1000 calls/day."""
+    results = []
+    categories = ["Software Engineer", "Data Science", "Machine Learning", "Engineering"]
+    for cat in categories:
         try:
             resp = await client.get(
-                "https://www.indeed.com/jobs",
-                params={"q": keyword, "l": US_LOCATION, "format": "json"},
-                headers={"User-Agent": "Mozilla/5.0"},
+                "https://www.themuse.com/api/public/jobs",
+                params={"category": cat, "level": "Mid Level", "page": 0, "per_page": 20},
+                timeout=15,
             )
-            # Indeed returns HTML — real implementation uses Apify actor
-            # For now, return empty and rely on Apify integration
+            resp.raise_for_status()
+            for item in resp.json().get("results", []):
+                refs = item.get("refs", {})
+                url = refs.get("landing_page", "")
+                if not url:
+                    continue
+                company = item.get("company", {}).get("name", "")
+                locations = item.get("locations", [{}])
+                location = locations[0].get("name", "Remote") if locations else "Remote"
+                results.append({
+                    "title": item.get("name", ""),
+                    "company": company,
+                    "location": location,
+                    "description": item.get("contents", "")[:3000],
+                    "url": url,
+                    "source": "themuse",
+                })
         except Exception:
-            pass
-    return jobs
+            continue
+    return results
 
 
-async def _scrape_via_apify(keyword: str) -> list[dict]:
-    """
-    Uses Apify's Indeed scraper actor.
-    Set APIFY_API_TOKEN in env and actor ID for production.
-    Returns list of {title, company, location, description, url} dicts.
-    """
-    import os
-    token = os.getenv("APIFY_API_TOKEN", "")
-    if not token:
-        return []
-
-    actor_id = "hMvNSpz3JnHgl5jkh"  # Apify Indeed Scraper
-    async with httpx.AsyncClient(timeout=120) as client:
-        # Start run
-        run_resp = await client.post(
-            f"https://api.apify.com/v2/acts/{actor_id}/runs",
-            params={"token": token},
-            json={
-                "position": keyword,
-                "location": US_LOCATION,
-                "maxItems": 50,
-                "country": "US",
-            },
+async def _fetch_arbeitnow(client: httpx.AsyncClient) -> list[dict]:
+    """Arbeitnow free API — no key, remote + European tech jobs."""
+    results = []
+    try:
+        resp = await client.get(
+            "https://www.arbeitnow.com/api/job-board-api",
+            params={"page": 1},
+            timeout=15,
         )
-        run = run_resp.json()
-        run_id = run.get("data", {}).get("id")
-        if not run_id:
-            return []
+        resp.raise_for_status()
+        for item in resp.json().get("data", []):
+            tags = [t.lower() for t in item.get("tags", [])]
+            if not any(t in tags for t in ["python", "backend", "engineer", "data", "ml", "software"]):
+                continue
+            results.append({
+                "title": item.get("title", ""),
+                "company": item.get("company_name", ""),
+                "location": item.get("location", "Remote"),
+                "description": item.get("description", "")[:3000],
+                "url": item.get("url", ""),
+                "source": "arbeitnow",
+            })
+    except Exception:
+        pass
+    return results
 
-        # Poll until finished
-        for _ in range(30):
-            await asyncio.sleep(10)
-            status_resp = await client.get(
-                f"https://api.apify.com/v2/acts/{actor_id}/runs/{run_id}",
-                params={"token": token},
+
+async def _fetch_remoteok(client: httpx.AsyncClient) -> list[dict]:
+    """RemoteOK public API — completely free, remote tech jobs."""
+    results = []
+    for tag in TECH_TAGS:
+        try:
+            resp = await client.get(
+                f"https://remoteok.com/api?tag={tag}",
+                headers={"User-Agent": "SmartJobApply/1.0"},
+                timeout=15,
             )
-            if status_resp.json().get("data", {}).get("status") == "SUCCEEDED":
-                break
+            resp.raise_for_status()
+            items = resp.json()
+            if isinstance(items, list) and items and "legal" in items[0]:
+                items = items[1:]  # first item is a legal notice
+            for item in items[:30]:
+                url = item.get("url", "")
+                if not url or not url.startswith("http"):
+                    continue
+                results.append({
+                    "title": item.get("position", ""),
+                    "company": item.get("company", ""),
+                    "location": item.get("location", "Remote"),
+                    "description": item.get("description", "")[:3000],
+                    "url": url,
+                    "source": "remoteok",
+                })
+        except Exception:
+            continue
+    return results
 
-        # Fetch dataset
-        ds_resp = await client.get(
-            f"https://api.apify.com/v2/acts/{actor_id}/runs/{run_id}/dataset/items",
-            params={"token": token},
+
+async def _fetch_all() -> list[dict]:
+    async with httpx.AsyncClient(timeout=30) as client:
+        muse, arbeitnow, remoteok = await asyncio.gather(
+            _fetch_themuse(client),
+            _fetch_arbeitnow(client),
+            _fetch_remoteok(client),
+            return_exceptions=True,
         )
-        items = ds_resp.json()
-        return [
-            {
-                "title": i.get("positionName", ""),
-                "company": i.get("company", ""),
-                "location": i.get("location", ""),
-                "description": i.get("description", ""),
-                "url": i.get("url", ""),
-                "source": "indeed",
-            }
-            for i in items
-            if i.get("url")
-        ]
+    jobs: list[dict] = []
+    for result in [muse, arbeitnow, remoteok]:
+        if isinstance(result, list):
+            jobs.extend(result)
+    return [j for j in jobs if j.get("url") and j.get("title")]
 
 
-async def _embed_and_store(jobs_data: list[dict], db: Session):
+async def _embed_and_store(jobs_data: list[dict], db: Session) -> int:
     from backend.services.embeddings import embed_batch
 
-    # Deduplicate against existing URLs
     urls = [j["url"] for j in jobs_data]
     existing = {row[0] for row in db.execute(select(Job.source_url).where(Job.source_url.in_(urls)))}
     new_jobs = [j for j in jobs_data if j["url"] not in existing]
@@ -121,16 +146,15 @@ async def _embed_and_store(jobs_data: list[dict], db: Session):
     embeddings = await embed_batch(texts)
 
     for job_data, emb in zip(new_jobs, embeddings):
-        job = Job(
+        db.add(Job(
             title=job_data["title"],
             company=job_data["company"],
             location=job_data["location"],
             description=job_data["description"],
             source_url=job_data["url"],
-            source=job_data.get("source", "indeed"),
+            source=job_data["source"],
             embedding=emb,
-        )
-        db.add(job)
+        ))
 
     db.commit()
     return len(new_jobs)
@@ -140,13 +164,9 @@ async def _embed_and_store(jobs_data: list[dict], db: Session):
 def fetch_all_jobs(self):
     db = _get_sync_session()
     try:
-        total = 0
-        for keyword in INDEED_SEARCH_KEYWORDS:
-            jobs_data = asyncio.run(_scrape_via_apify(keyword))
-            if jobs_data:
-                saved = asyncio.run(_embed_and_store(jobs_data, db))
-                total += saved
-        return {"fetched": total}
+        jobs_data = asyncio.run(_fetch_all())
+        saved = asyncio.run(_embed_and_store(jobs_data, db))
+        return {"fetched": len(jobs_data), "saved": saved}
     except Exception as exc:
         raise self.retry(exc=exc, countdown=60)
     finally:

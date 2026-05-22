@@ -19,12 +19,13 @@ class Settings(BaseSettings):
     supabase_service_key: str = ""
     supabase_storage_bucket: str = "resumes"
 
-    # Apify (job scraping)
-    apify_api_token: str = ""
-
-    # SendGrid
-    sendgrid_api_key: str = ""
-    sendgrid_from_email: str = "noreply@smartjobapply.com"
+    # SMTP email (optional — app logs if unconfigured)
+    # For Gmail: use an App Password from myaccount.google.com/security
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
 
     # Netlify frontend URL (for CORS)
     frontend_url: str = "http://localhost:3000"
