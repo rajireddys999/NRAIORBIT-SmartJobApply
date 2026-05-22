@@ -1,15 +1,11 @@
-name: Deploy — Netlify
-
-# Railway auto-deploys via its native GitHub integration.
-# Connect each service in Railway dashboard:
-#   Service → Settings → Source → Connect Repo → select branch: main
-# No token or secret needed here for Railway.
+name: Deploy — Netlify + Railway
 
 on:
   push:
     branches: [main]
 
 jobs:
+  # ── 1. Deploy frontend → Netlify ────────────────────────────
   deploy-frontend:
     name: Frontend → Netlify
     runs-on: ubuntu-latest
@@ -45,3 +41,32 @@ jobs:
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID:    ${{ secrets.NETLIFY_SITE_ID }}
+
+  # ── 2. Deploy backend → Railway (GraphQL API) ───────────────
+  deploy-backend:
+    name: Backend → Railway
+    runs-on: ubuntu-latest
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      ENV_ID: "10b275a6-6214-4409-a1b4-e6dc47d0443f"
+    steps:
+      - name: Redeploy backend
+        run: |
+          curl -sS -f -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\":\"mutation { serviceInstanceDeploy(environmentId: \\\"$ENV_ID\\\", serviceId: \\\"4c0e1958-bf97-459e-aeaf-0463d4b8879e\\\", latestCommit: true) }\"}"
+
+      - name: Redeploy worker
+        run: |
+          curl -sS -f -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\":\"mutation { serviceInstanceDeploy(environmentId: \\\"$ENV_ID\\\", serviceId: \\\"edf5cfb7-24c1-42b9-973c-261ad6d75ed7\\\", latestCommit: true) }\"}"
+
+      - name: Redeploy beat
+        run: |
+          curl -sS -f -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\":\"mutation { serviceInstanceDeploy(environmentId: \\\"$ENV_ID\\\", serviceId: \\\"e0350d43-696d-496e-86b9-6b222238026b\\\", latestCommit: true) }\"}"
