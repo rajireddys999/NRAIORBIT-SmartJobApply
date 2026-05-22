@@ -2,7 +2,7 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 
 from backend.models.database import get_db
 from backend.models.user import User
@@ -128,3 +128,16 @@ async def all_applications(
         }
         for m, j, u in rows
     ]
+
+
+
+@router.post("/fix-embeddings")
+async def fix_embeddings(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """NULL out all job embeddings so the next job refresh re-embeds them cleanly."""
+    from sqlalchemy import text
+    result = await db.execute(text("UPDATE jobs SET embedding = NULL"))
+    await db.commit()
+    return {"cleared": result.rowcount, "message": "Run job refresh to re-embed all jobs"}

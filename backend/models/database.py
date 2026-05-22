@@ -14,12 +14,18 @@ class JsonList(TypeDecorator):
 
     def process_bind_param(self, value, dialect):
         if value is not None:
+            # Convert numpy arrays to plain Python lists before JSON serialization
+            if hasattr(value, "tolist"):
+                value = value.tolist()
             return json.dumps(value)
         return value
 
     def process_result_value(self, value, dialect):
         if value is not None and isinstance(value, str):
-            return json.loads(value)
+            try:
+                return json.loads(value)
+            except (json.JSONDecodeError, ValueError):
+                return None  # stale numpy-format string — treat as missing
         return value
 
 engine = create_async_engine(settings.database_url, echo=False)

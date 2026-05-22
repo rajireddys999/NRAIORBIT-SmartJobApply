@@ -50,6 +50,8 @@ def run_matching(self, user_id: str, resume_id: str):
         })
 
         for i, job in enumerate(jobs):
+            if job.embedding is None:
+                continue
             score = _score_to_percent(_cosine_similarity(resume.embedding, job.embedding))
 
             existing = db.execute(
