@@ -41,6 +41,9 @@ async def init_db():
         await conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active'"
         ))
+        await conn.execute(text(
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ NULL"
+        ))
         # Ensure the designated admin has admin role and is always active.
         from backend.models.user import ADMIN_EMAIL
         await conn.execute(text(

@@ -31,6 +31,7 @@ async def list_jobs(
             "source_url": j.source_url,
             "source": j.source,
             "fetched_at": j.fetched_at,
+            "posted_at": j.posted_at,
         }
         for j in jobs
     ]

@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getToken, getRole } from "@/lib/auth";
-import { getJobs, refreshJobs } from "@/lib/api";
+import { getJobs, refreshJobs, adminTaskStatus } from "@/lib/api";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -43,11 +43,14 @@ const LEVEL_STYLE = {
   Senior: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25",
 };
 
+type RefreshStatus = "idle" | "queued" | "running" | "done" | "failed";
+
 export default function JobBoard() {
   const router = useRouter();
   const [jobs, setJobs] = useState<any[]>([]);
+  const [newJobIds, setNewJobIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>("idle");
   const [refreshMsg, setRefreshMsg] = useState("");
   const [locationFilter, setLocationFilter] = useState("All");
   const [sourceFilter, setSourceFilter] = useState("All");
@@ -95,15 +98,53 @@ export default function JobBoard() {
   async function handleRefresh() {
     const token = getToken();
     if (!token) return;
-    setRefreshing(true);
+    setRefreshStatus("queued");
     setRefreshMsg("");
+
+    // Snapshot current job IDs so we can diff after the task finishes
+    const knownIds = new Set(jobs.map((j: any) => j.id));
+
     try {
-      await refreshJobs(token);
-      setRefreshMsg("Job fetch queued — new jobs appear within 2–3 minutes.");
+      const { task_id } = await refreshJobs(token);
+      setRefreshStatus("running");
+
+      const deadline = Date.now() + 4 * 60 * 1000;
+      const poll = async () => {
+        if (Date.now() > deadline) {
+          setRefreshStatus("failed");
+          setRefreshMsg("Timed out — task still running in background.");
+          return;
+        }
+        try {
+          const status = await adminTaskStatus(token, task_id);
+          if (status.state === "SUCCESS") {
+            setRefreshStatus("done");
+            // Re-fetch jobs and surface only the new ones
+            const fresh = await getJobs(token, 1, 100);
+            const added = fresh.filter((j: any) => !knownIds.has(j.id));
+            // Sort: new jobs first, then existing
+            setJobs([...added, ...fresh.filter((j: any) => knownIds.has(j.id))]);
+            setNewJobIds(new Set(added.map((j: any) => j.id)));
+            const result = status.result;
+            if (result) {
+              setRefreshMsg(`${result.saved} new job${result.saved !== 1 ? "s" : ""} added (${result.fetched} fetched total)`);
+            } else {
+              setRefreshMsg("Refresh complete.");
+            }
+          } else if (status.state === "FAILURE") {
+            setRefreshStatus("failed");
+            setRefreshMsg(status.error ?? "Refresh failed.");
+          } else {
+            setTimeout(poll, 3000);
+          }
+        } catch {
+          setTimeout(poll, 3000);
+        }
+      };
+      setTimeout(poll, 3000);
     } catch {
+      setRefreshStatus("failed");
       setRefreshMsg("Failed to queue refresh.");
-    } finally {
-      setRefreshing(false);
     }
   }
 
@@ -139,20 +180,38 @@ export default function JobBoard() {
           </div>
           <button
             onClick={handleRefresh}
-            disabled={refreshing}
+            disabled={refreshStatus === "queued" || refreshStatus === "running"}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-              refreshing
+              refreshStatus === "queued" || refreshStatus === "running"
                 ? "bg-indigo-400/30 text-indigo-300 cursor-wait"
                 : "bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/25"
             }`}
           >
-            <span>{refreshing ? "Queuing…" : "↺ Refresh Jobs"}</span>
+            {(refreshStatus === "queued" || refreshStatus === "running") && (
+              <span className="w-3.5 h-3.5 border-2 border-indigo-300/40 border-t-indigo-300 rounded-full animate-spin" />
+            )}
+            <span>
+              {refreshStatus === "queued" ? "Queuing…"
+                : refreshStatus === "running" ? "Fetching…"
+                : "↺ Refresh Jobs"}
+            </span>
           </button>
         </div>
 
-        {refreshMsg && (
-          <div className="mb-4 px-4 py-2.5 rounded-xl text-sm border border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">
-            {refreshMsg}
+        {refreshStatus !== "idle" && (
+          <div className={`mb-4 px-4 py-2.5 rounded-xl text-sm border ${
+            refreshStatus === "done"
+              ? "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
+              : refreshStatus === "failed"
+              ? "border-red-500/25 bg-red-500/10 text-red-500"
+              : "border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300"
+          }`}>
+            {refreshStatus === "queued" && "Queuing task…"}
+            {refreshStatus === "running" && (
+              <span>Fetching from all sources<span className="animate-pulse">…</span></span>
+            )}
+            {refreshStatus === "done" && (refreshMsg || "Refresh complete.")}
+            {refreshStatus === "failed" && `❌ ${refreshMsg}`}
           </div>
         )}
 
@@ -220,14 +279,20 @@ export default function JobBoard() {
               const level = detectLevel(j.title);
               const srcLabel = SOURCE_LABEL[j.source] ?? j.source;
               const srcStyle = SOURCE_STYLE[j.source] ?? DEFAULT_SOURCE_STYLE;
+              const isNew = newJobIds.has(j.id);
+              const dateLabel = j.posted_at
+                ? `Posted ${new Date(j.posted_at).toLocaleDateString()}`
+                : `Fetched ${new Date(j.fetched_at).toLocaleDateString()}`;
               return (
                 <a
                   key={j.id}
                   href={j.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group block rounded-xl p-4 border transition-all hover:border-indigo-400/50 hover:shadow-md hover:shadow-indigo-500/5"
-                  style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
+                  className={`group block rounded-xl p-4 border transition-all hover:border-indigo-400/50 hover:shadow-md hover:shadow-indigo-500/5 ${
+                    isNew ? "border-indigo-400/40 ring-1 ring-indigo-400/20" : ""
+                  }`}
+                  style={{ background: "var(--bg-card)", borderColor: isNew ? undefined : "var(--border)" }}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -246,6 +311,12 @@ export default function JobBoard() {
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 mt-2.5 items-center">
+                    {/* New badge */}
+                    {isNew && (
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-500 text-white">
+                        New
+                      </span>
+                    )}
                     {/* Source badge */}
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${srcStyle}`}>
                       {srcLabel}
@@ -256,9 +327,9 @@ export default function JobBoard() {
                         {level === "Entry" ? "Entry Level" : "Senior"}
                       </span>
                     )}
-                    {/* Date */}
+                    {/* Date — posted_at preferred, fetched_at as fallback */}
                     <span className="text-xs text-[var(--text-muted)] ml-auto">
-                      {new Date(j.fetched_at).toLocaleDateString()}
+                      {dateLabel}
                     </span>
                   </div>
                 </a>

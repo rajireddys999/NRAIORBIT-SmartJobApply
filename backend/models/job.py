@@ -20,3 +20,6 @@ class Job(Base):
     source: Mapped[str] = mapped_column(String(64))
     embedding: Mapped[Optional[list]] = mapped_column(JsonList, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # When the company originally posted the job (extracted from source API).
+    # Null when the source doesn't provide a posting date (LinkedIn, The Muse).
+    posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

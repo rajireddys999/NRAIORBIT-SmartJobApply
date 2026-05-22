@@ -18,6 +18,7 @@ Sources:
 """
 import asyncio
 import re
+from datetime import datetime, timezone
 import httpx
 from bs4 import BeautifulSoup
 from celery import shared_task
@@ -26,6 +27,32 @@ from sqlalchemy.orm import Session
 
 from backend.celery_app import celery_app
 from backend.models.job import Job
+
+
+def _parse_date(raw) -> datetime | None:
+    """Parse posting dates from various source formats into UTC datetime."""
+    if raw is None:
+        return None
+    try:
+        if isinstance(raw, (int, float)):
+            ts = raw / 1000 if raw > 1e10 else raw  # ms → s if needed
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
+        if isinstance(raw, str):
+            raw = raw.strip().rstrip("Z")
+            for fmt in (
+                "%Y-%m-%dT%H:%M:%S.%f",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%d",
+                "%a, %d %b %Y %H:%M:%S %Z",
+                "%a, %d %b %Y %H:%M:%S GMT",
+            ):
+                try:
+                    return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+    except Exception:
+        pass
+    return None
 
 
 TECH_TAGS = ["python", "backend", "software-engineer", "data-science", "machine-learning"]
@@ -157,6 +184,7 @@ async def _fetch_arbeitnow(client: httpx.AsyncClient) -> list[dict]:
                 "description": item.get("description", "")[:3000],
                 "url": item.get("url", ""),
                 "source": "arbeitnow",
+                "posted_at": _parse_date(item.get("created_at")),
             })
     except Exception:
         pass
@@ -188,6 +216,7 @@ async def _fetch_remoteok(client: httpx.AsyncClient) -> list[dict]:
                     "description": item.get("description", "")[:3000],
                     "url": url,
                     "source": "remoteok",
+                    "posted_at": _parse_date(item.get("date")),
                 })
         except Exception:
             continue
@@ -234,6 +263,7 @@ async def _fetch_lever(client: httpx.AsyncClient) -> list[dict]:
                     "description": f"{description_plain[:2000]}\nTeam: {team}. Type: {commitment}.",
                     "url": url,
                     "source": "lever",
+                    "posted_at": _parse_date(job.get("createdAt")),
                 })
         except Exception:
             continue
@@ -275,6 +305,7 @@ async def _fetch_ashby(client: httpx.AsyncClient) -> list[dict]:
                     "description": f"{description[:2000]}\nDepartment: {dept}.",
                     "url": url,
                     "source": "ashby",
+                    "posted_at": _parse_date(job.get("publishedDate") or job.get("updatedAt")),
                 })
         except Exception:
             continue
@@ -335,6 +366,7 @@ async def _fetch_indeed(client: httpx.AsyncClient) -> list[dict]:
                         "description": job.get("snippet", "")[:3000],
                         "url": url,
                         "source": "indeed",
+                        "posted_at": _parse_date(job.get("date")),
                     })
             except Exception:
                 continue
@@ -382,6 +414,7 @@ async def _fetch_greenhouse(client: httpx.AsyncClient) -> list[dict]:
                     "description": description[:3000],
                     "url": url,
                     "source": "greenhouse",
+                    "posted_at": _parse_date(job.get("updated_at")),
                 })
         except Exception:
             continue
@@ -541,6 +574,7 @@ async def _embed_and_store(jobs_data: list[dict], db: Session) -> int:
             source_url=job_data["url"],
             source=job_data["source"],
             embedding=emb,
+            posted_at=job_data.get("posted_at"),
         ).on_conflict_do_nothing(index_elements=["source_url"])
         db.execute(stmt)
 
