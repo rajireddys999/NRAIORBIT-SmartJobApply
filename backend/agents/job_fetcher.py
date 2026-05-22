@@ -1,12 +1,20 @@
 """
 Job Fetcher Agent — runs every 30 min via Celery Beat.
 
-Sources (all free, no API keys required):
-  - The Muse      — US tech jobs, entry + mid level, 1000 calls/day
-  - Arbeitnow     — remote + EU tech jobs
-  - RemoteOK      — remote tech jobs by tag
-  - Greenhouse    — company career pages (Stripe, Datadog, Figma, Airbnb, etc.)
-  - LinkedIn      — location-based (Charlotte, Dallas, Austin, Atlanta)
+Sources:
+  Free public APIs (no key required):
+    - The Muse      — US tech jobs, entry + mid level
+    - Arbeitnow     — remote + EU tech jobs
+    - RemoteOK      — remote tech jobs by tag
+    - Greenhouse    — company career pages (Stripe, Datadog, Figma, Airbnb, etc.)
+    - Lever ATS     — OpenAI, Coinbase, DoorDash, Scale AI, Notion, and more
+    - Ashby ATS     — Vercel, Retool, Linear, Rippling, Loom, and more
+
+  Official publisher APIs (key required, gracefully skipped if not set):
+    - Indeed        — 250M+ listings; requires INDEED_PUBLISHER_ID env var
+
+  Rate-limited (once daily):
+    - LinkedIn      — location-based guest API
 """
 import asyncio
 import re
@@ -28,6 +36,38 @@ GREENHOUSE_COMPANIES = [
     "stripe", "brex", "gusto", "figma", "datadog",
     "airbnb", "lyft", "robinhood", "confluent", "zendesk",
     "intercom", "mongodb", "elastic", "okta", "cloudflare",
+]
+
+# Companies using Lever ATS — free public JSON API, no auth required
+LEVER_COMPANIES = [
+    "openai", "coinbase", "doordash", "scale", "notion",
+    "reddit", "carta", "benchling", "lattice", "vanta",
+    "gem", "dbt-labs", "census", "prefect", "cube",
+]
+
+# Companies using Ashby ATS — free public JSON API, no auth required
+ASHBY_COMPANIES = [
+    "vercel", "retool", "linear", "rippling", "loom",
+    "ramp", "brex", "deel", "mercury", "airplane",
+    "supabase", "neon", "clerk", "resend", "trigger",
+]
+
+# Indeed search queries split by experience level
+INDEED_ENTRY_QUERIES = [
+    "entry level software engineer",
+    "junior python developer",
+    "associate software engineer",
+    "new grad software engineer",
+    "junior data scientist",
+    "entry level backend developer",
+]
+INDEED_EXPERIENCED_QUERIES = [
+    "senior software engineer",
+    "senior python developer",
+    "backend engineer",
+    "data scientist",
+    "machine learning engineer",
+    "software engineer",
 ]
 
 # US metros for LinkedIn location-based search + The Muse location filter
@@ -154,6 +194,153 @@ async def _fetch_remoteok(client: httpx.AsyncClient) -> list[dict]:
     return results
 
 
+async def _fetch_lever(client: httpx.AsyncClient) -> list[dict]:
+    """Lever ATS public API — company career pages, no auth required.
+
+    Used by OpenAI, Coinbase, DoorDash, Scale AI, Notion, Reddit, and more.
+    Endpoint returns all open roles as JSON; filters for tech roles by title.
+    """
+    TECH_KEYWORDS = {
+        "engineer", "developer", "data", "machine learning", "ml", "ai",
+        "backend", "frontend", "fullstack", "devops", "platform", "software",
+        "analyst", "scientist", "research",
+    }
+    results = []
+    for company in LEVER_COMPANIES:
+        try:
+            resp = await client.get(
+                f"https://api.lever.co/v0/postings/{company}",
+                params={"mode": "json"},
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                continue
+            for job in resp.json()[:50]:
+                title = job.get("text", "").strip()
+                url = job.get("hostedUrl", "").strip()
+                if not title or not url:
+                    continue
+                if not any(kw in title.lower() for kw in TECH_KEYWORDS):
+                    continue
+                categories = job.get("categories", {})
+                location = categories.get("location", "Remote") or "Remote"
+                team = categories.get("team", "")
+                commitment = categories.get("commitment", "")
+                description_plain = job.get("descriptionPlain", "") or job.get("description", "") or title
+                results.append({
+                    "title": title,
+                    "company": company.replace("-", " ").title(),
+                    "location": location,
+                    "description": f"{description_plain[:2000]}\nTeam: {team}. Type: {commitment}.",
+                    "url": url,
+                    "source": "lever",
+                })
+        except Exception:
+            continue
+    return results
+
+
+async def _fetch_ashby(client: httpx.AsyncClient) -> list[dict]:
+    """Ashby ATS public API — company career pages, no auth required.
+
+    Used by Vercel, Retool, Linear, Rippling, Loom, Ramp, Mercury, and more.
+    """
+    results = []
+    for company in ASHBY_COMPANIES:
+        try:
+            resp = await client.post(
+                f"https://api.ashbyhq.com/posting-api/job-board/{company}",
+                json={"limit": 50},
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            jobs = data.get("jobs", [])
+            company_name = data.get("organization", {}).get("name", company.title())
+            for job in jobs:
+                title = job.get("title", "").strip()
+                url = job.get("jobUrl", "").strip()
+                if not title or not url:
+                    continue
+                location = job.get("location", "Remote") or "Remote"
+                dept = job.get("department", "")
+                description = job.get("descriptionHtml", "") or job.get("description", "") or title
+                if "<" in description:
+                    description = BeautifulSoup(description, "html.parser").get_text(" ", strip=True)
+                results.append({
+                    "title": title,
+                    "company": company_name,
+                    "location": location,
+                    "description": f"{description[:2000]}\nDepartment: {dept}.",
+                    "url": url,
+                    "source": "ashby",
+                })
+        except Exception:
+            continue
+    return results
+
+
+async def _fetch_indeed(client: httpx.AsyncClient) -> list[dict]:
+    """Indeed Publisher API — official subscription, 250M+ listings.
+
+    Requires INDEED_PUBLISHER_ID env var. Searches both entry-level and
+    experienced queries across configured US locations. Skipped silently
+    if publisher ID is not set.
+    """
+    from backend.config import settings
+    if not settings.indeed_publisher_id:
+        return []
+
+    results = []
+    all_queries = [
+        *[(q, "entry") for q in INDEED_ENTRY_QUERIES],
+        *[(q, "experienced") for q in INDEED_EXPERIENCED_QUERIES],
+    ]
+    locations = [loc for loc in SEARCH_LOCATIONS if loc != "Remote"]
+
+    for location in locations:
+        for query, _ in all_queries[:4]:  # cap: 4 queries × 4 locations = 16 requests
+            try:
+                resp = await client.get(
+                    "https://api.indeed.com/ads/apisearch",
+                    params={
+                        "publisher": settings.indeed_publisher_id,
+                        "q": query,
+                        "l": location,
+                        "sort": "date",
+                        "radius": 25,
+                        "limit": 25,
+                        "format": "json",
+                        "v": "2",
+                        "co": "us",
+                        "fromage": 7,  # last 7 days
+                        "latlong": 1,
+                    },
+                    timeout=15,
+                )
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                for job in data.get("results", []):
+                    url = job.get("url", "").strip()
+                    title = job.get("jobtitle", "").strip()
+                    if not url or not title:
+                        continue
+                    job_location = job.get("formattedLocationFull", "") or job.get("formattedLocation", location)
+                    results.append({
+                        "title": title,
+                        "company": job.get("company", "").strip(),
+                        "location": job_location,
+                        "description": job.get("snippet", "")[:3000],
+                        "url": url,
+                        "source": "indeed",
+                    })
+            except Exception:
+                continue
+    return results
+
+
 async def _fetch_greenhouse(client: httpx.AsyncClient) -> list[dict]:
     """Greenhouse ATS public API — company career pages, no auth needed.
 
@@ -275,13 +462,20 @@ async def _fetch_linkedin(client: httpx.AsyncClient) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 async def _fetch_core() -> list[dict]:
-    """The Muse + Arbeitnow + RemoteOK + Greenhouse — runs every 30 min."""
+    """Core sources — runs every 30 min.
+
+    Includes: The Muse, Arbeitnow, RemoteOK, Greenhouse, Lever, Ashby, Indeed.
+    LinkedIn excluded — pulled once daily or via manual refresh only.
+    """
     async with httpx.AsyncClient(timeout=30) as client:
         gathered = await asyncio.gather(
             _fetch_themuse(client),
             _fetch_arbeitnow(client),
             _fetch_remoteok(client),
             _fetch_greenhouse(client),
+            _fetch_lever(client),
+            _fetch_ashby(client),
+            _fetch_indeed(client),
             return_exceptions=True,
         )
     jobs: list[dict] = []
@@ -292,13 +486,16 @@ async def _fetch_core() -> list[dict]:
 
 
 async def _fetch_all() -> list[dict]:
-    """All 5 sources — used only for manual admin refresh."""
+    """All sources including LinkedIn — used only for manual admin refresh."""
     async with httpx.AsyncClient(timeout=30) as client:
         gathered = await asyncio.gather(
             _fetch_themuse(client),
             _fetch_arbeitnow(client),
             _fetch_remoteok(client),
             _fetch_greenhouse(client),
+            _fetch_lever(client),
+            _fetch_ashby(client),
+            _fetch_indeed(client),
             _fetch_linkedin(client),
             return_exceptions=True,
         )

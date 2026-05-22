@@ -16,6 +16,7 @@ const SCORE_GLOW = (s: number) =>
 const SOURCE_LABEL: Record<string, string> = {
   greenhouse: "Greenhouse", linkedin: "LinkedIn", themuse: "The Muse",
   remoteok: "RemoteOK", arbeitnow: "Arbeitnow",
+  lever: "Lever", ashby: "Ashby", indeed: "Indeed",
 };
 const SOURCE_STYLE: Record<string, string> = {
   greenhouse: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25",
@@ -23,6 +24,9 @@ const SOURCE_STYLE: Record<string, string> = {
   themuse:    "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25",
   remoteok:   "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/25",
   arbeitnow:  "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25",
+  lever:      "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/25",
+  ashby:      "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/25",
+  indeed:     "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25",
 };
 
 function detectLevel(title: string): "Entry" | "Senior" | null {

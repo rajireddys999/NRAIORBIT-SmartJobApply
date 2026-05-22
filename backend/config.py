@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # Match threshold for auto-apply
     match_score_threshold: float = 75.0
 
+    # Indeed Publisher API (register free at ads.indeed.com/jobroll/xmlfeed)
+    # Leave empty to skip Indeed fetching
+    indeed_publisher_id: str = ""
+
     class Config:
         env_file = ".env"
 
