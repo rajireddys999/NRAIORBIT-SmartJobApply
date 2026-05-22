@@ -109,7 +109,7 @@ export default function Dashboard() {
         } else if (res.state === "FAILURE") {
           setMatching(false);
           setMatchProgress(null);
-          setUploadMsg("Matching failed — check that the Celery worker is running on Railway.");
+          setUploadMsg(`Matching failed: ${res.error ?? "unknown error"} — check Railway worker logs.`);
         } else if (res.state === "PROGRESS" && res.meta) {
           setMatchProgress(res.meta);
           setUploadMsg(res.meta.status ?? "Matching in progress…");

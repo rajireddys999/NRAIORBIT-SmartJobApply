@@ -78,7 +78,8 @@ async def match_task_status(
     if state == "SUCCESS":
         payload["result"] = result.result
     elif state == "FAILURE":
-        payload["error"] = str(result.result)
+        exc = result.result
+        payload["error"] = str(exc) if exc else "Unknown error"
     elif state == "PROGRESS":
         payload["meta"] = result.info  # dict with scanned/total/matched/strong/status
     return payload
