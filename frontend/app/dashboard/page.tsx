@@ -45,7 +45,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const STATS = (matches: any[], applications: any[], avgScore: string | null) => [
   { label: "Total Matches",  value: matches.length,                         icon: "🎯", color: "indigo"  },
-  { label: "Strong Matches", value: matches.filter(m => m.score >= 75).length, icon: "⚡", color: "emerald" },
+  { label: "Strong Matches", value: matches.filter(m => m.score >= 85).length, icon: "⚡", color: "emerald" },
   { label: "Jobs Applied",   value: applications.length,                    icon: "✅", color: "purple"  },
   { label: "Avg Score",      value: avgScore ? `${avgScore}%` : "—",        icon: "📊", color: "cyan"    },
 ];
@@ -88,7 +88,7 @@ export default function Dashboard() {
     if (!token) { router.push("/login"); return; }
     setLoadingData(true);
     Promise.all([
-      getMatches(token, 0).catch((e) => { setLoadError(e.message || "Failed to load matches"); return []; }),
+      getMatches(token, 75).catch((e) => { setLoadError(e.message || "Failed to load matches"); return []; }),
       getApplications(token).catch(() => []),
       getResumes(token).catch(() => []),
       getProfile(token).catch(() => null),
@@ -110,7 +110,7 @@ export default function Dashboard() {
       try {
         const res = await resumeTaskStatus(token, task_id);
         if (res.state === "SUCCESS") {
-          const fresh = await getMatches(token, 50);
+          const fresh = await getMatches(token, 75);
           setMatches(fresh);
           setMatching(false);
           setMatchProgress(null);
@@ -258,12 +258,12 @@ export default function Dashboard() {
     setApplyingAll(true); setApplyMsg("");
     try {
       // Open top 5 job URLs before the async call (must be synchronous to avoid popup block)
-      const topPending = matches.filter(m => m.status === "pending" && m.score >= 90).slice(0, 5);
+      const topPending = matches.filter(m => m.status === "pending" && m.score >= 75).slice(0, 5);
       topPending.forEach(m => { if (m.job?.source_url) window.open(m.job.source_url, "_blank", "noopener,noreferrer"); });
-      const { applied } = await applyAllMatches(token, 90);
+      const { applied } = await applyAllMatches(token, 75);
       const now = new Date().toISOString();
       setMatches(prev => prev.map(m =>
-        m.status === "pending" && m.score >= 90 ? { ...m, status: "applied", applied_at: now } : m
+        m.status === "pending" && m.score >= 75 ? { ...m, status: "applied", applied_at: now } : m
       ));
       setApplyMsg(`Opened ${topPending.length} job page${topPending.length !== 1 ? "s" : ""} — complete the applications there. ${applied} match${applied !== 1 ? "es" : ""} marked applied.`);
     } catch (err: any) {
