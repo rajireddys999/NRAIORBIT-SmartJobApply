@@ -475,10 +475,8 @@ async def _fetch_linkedin(client: httpx.AsyncClient) -> list[dict]:
         ),
         "Accept-Language": "en-US,en;q=0.9",
     }
-    # Search top 3 US cities + top 2 India cities
-    us_cities = US_LOCATIONS[:3]
-    india_cities = INDIA_LOCATIONS[:2]
-    search_cities = us_cities + india_cities
+    # Search all USA + India cities
+    search_cities = US_LOCATIONS + INDIA_LOCATIONS
     keywords = LINKEDIN_KEYWORDS[:3]
 
     for location in search_cities:
