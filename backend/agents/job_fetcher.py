@@ -134,10 +134,20 @@ async def _fetch_all() -> list[dict]:
 
 async def _embed_and_store(jobs_data: list[dict], db: Session) -> int:
     from backend.services.embeddings import embed_batch
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-    urls = [j["url"] for j in jobs_data]
+    # Deduplicate within the fetched batch first (RemoteOK returns the same
+    # job for multiple tags, so the same URL can appear several times).
+    seen: set[str] = set()
+    unique_jobs = []
+    for j in jobs_data:
+        if j["url"] not in seen:
+            seen.add(j["url"])
+            unique_jobs.append(j)
+
+    urls = [j["url"] for j in unique_jobs]
     existing = {row[0] for row in db.execute(select(Job.source_url).where(Job.source_url.in_(urls)))}
-    new_jobs = [j for j in jobs_data if j["url"] not in existing]
+    new_jobs = [j for j in unique_jobs if j["url"] not in existing]
 
     if not new_jobs:
         return 0
@@ -146,7 +156,7 @@ async def _embed_and_store(jobs_data: list[dict], db: Session) -> int:
     embeddings = await embed_batch(texts)
 
     for job_data, emb in zip(new_jobs, embeddings):
-        db.add(Job(
+        stmt = pg_insert(Job).values(
             title=job_data["title"],
             company=job_data["company"],
             location=job_data["location"],
@@ -154,7 +164,8 @@ async def _embed_and_store(jobs_data: list[dict], db: Session) -> int:
             source_url=job_data["url"],
             source=job_data["source"],
             embedding=emb,
-        ))
+        ).on_conflict_do_nothing(index_elements=["source_url"])
+        db.execute(stmt)
 
     db.commit()
     return len(new_jobs)
