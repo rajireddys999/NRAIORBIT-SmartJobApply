@@ -8,9 +8,7 @@ Three signals combined into a 0-100 composite score:
 
 Score interpretation: 75+ = saved match, 85+ = strong, 93+ = excellent.
 """
-import re
 import uuid
-import difflib
 import numpy as np
 from sqlalchemy import select, and_
 
@@ -21,15 +19,19 @@ from backend.models.job import Job
 from backend.models.match import Match, MatchStatus
 
 # ── Scoring constants ─────────────────────────────────────────────────────────
-_SEM_MIN = 0.30   # MiniLM lower bound for unrelated tech docs
-_SEM_MAX = 0.85   # MiniLM upper bound for highly related tech docs
+# MiniLM-L6-v2 cosine similarities for tech documents cluster around 0.55-0.70.
+# Remapping [0.25, 0.80] → [0, 100] makes the semantic signal span the full range.
+_SEM_MIN = 0.25
+_SEM_MAX = 0.80
 
 _W_SEMANTIC = 0.50
 _W_SKILLS   = 0.35
 _W_TITLE    = 0.15
 
-SAVE_THRESHOLD   = 75.0
-STRONG_THRESHOLD = 85.0
+# Calibrated to MiniLM realistic output: genuine matches score 55-75%, great matches 75-90%
+SAVE_THRESHOLD      = 50.0   # save to DB
+STRONG_THRESHOLD    = 70.0   # marked strong
+EXCELLENT_THRESHOLD = 82.0   # excellent/top match
 
 # ── Tech skill lexicon ────────────────────────────────────────────────────────
 _TECH_SKILLS: set[str] = {
@@ -129,32 +131,24 @@ def _skill_score(resume_text: str | None, job_text: str | None, semantic_pct: fl
 
 
 def _title_score(job_title: str, resume_text: str | None) -> float:
-    """Title relevance 0-1. Checks substring presence then word overlap."""
+    """Title relevance 0-1. Checks substring presence and word overlap."""
     if not job_title or not resume_text:
         return 0.5  # neutral when no data
 
     jt = job_title.lower()
     rt = resume_text.lower()
 
-    # Exact title substring
+    # Exact title phrase in resume
     if jt in rt:
         return 1.0
 
-    # Word-level overlap
+    # Word-level overlap (remove stopwords)
     jt_words = set(jt.split()) - _STOPWORDS
     rt_words = set(rt.split())
     if not jt_words:
         return 0.5
 
-    word_overlap = len(jt_words & rt_words) / len(jt_words)
-
-    # Fuzzy bonus: each title word vs resume tokens
-    best_fuzz = max(
-        (difflib.SequenceMatcher(None, w, rt).ratio() for w in jt_words if len(w) > 3),
-        default=0.0,
-    )
-
-    return min(word_overlap * 0.75 + best_fuzz * 0.25, 1.0)
+    return min(len(jt_words & rt_words) / len(jt_words), 1.0)
 
 
 def composite_score(

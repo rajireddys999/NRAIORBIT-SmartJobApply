@@ -50,10 +50,15 @@ def get_resume_bytes(storage_ref: str) -> tuple[bytes, str]:
 
 
 def get_presigned_url(storage_ref: str, expires: int = 3600) -> str:
-    """Return a short-lived signed URL from a supabase:// reference."""
+    """Return a short-lived signed URL from a supabase:// reference. Returns '' on failure."""
+    if not storage_ref or storage_ref.startswith("local://"):
+        return ""  # resume stored locally — no viewable URL
     if not storage_ref.startswith("supabase://"):
-        return storage_ref  # legacy plain-URL rows
+        return storage_ref  # already a plain https:// URL
     _, rest = storage_ref.split("supabase://", 1)
     bucket, path = rest.split("/", 1)
-    result = _get_client().storage.from_(bucket).create_signed_url(path, expires)
-    return result["signedURL"]
+    try:
+        result = _get_client().storage.from_(bucket).create_signed_url(path, expires)
+        return result.get("signedURL") or ""
+    except Exception:
+        return ""

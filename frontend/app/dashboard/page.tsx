@@ -90,7 +90,7 @@ export default function Dashboard() {
     if (!token) { router.push("/login"); return; }
     setLoadingData(true);
     Promise.all([
-      getMatches(token, 75).catch((e) => { setLoadError(e.message || "Failed to load matches"); return []; }),
+      getMatches(token, 0).catch((e) => { setLoadError(e.message || "Failed to load matches"); return []; }),
       getApplications(token).catch(() => []),
       getResumes(token).catch(() => []),
       isAdmin ? Promise.resolve(null) : getProfile(token).catch(() => null),
@@ -112,7 +112,7 @@ export default function Dashboard() {
       try {
         const res = await resumeTaskStatus(token, task_id);
         if (res.state === "SUCCESS") {
-          const fresh = await getMatches(token, 75);
+          const fresh = await getMatches(token, 0);
           setMatches(fresh);
           setMatching(false);
           setMatchProgress(null);
@@ -273,12 +273,12 @@ export default function Dashboard() {
     setApplyingAll(true); setApplyMsg("");
     try {
       // Open top 5 job URLs before the async call (must be synchronous to avoid popup block)
-      const topPending = matches.filter(m => m.status === "pending" && m.score >= 75).slice(0, 5);
+      const topPending = matches.filter(m => m.status === "pending" && m.score >= 70).slice(0, 5);
       topPending.forEach(m => { if (m.job?.source_url) window.open(m.job.source_url, "_blank", "noopener,noreferrer"); });
-      const { applied } = await applyAllMatches(token, 75);
+      const { applied } = await applyAllMatches(token, 70);
       const now = new Date().toISOString();
       setMatches(prev => prev.map(m =>
-        m.status === "pending" && m.score >= 75 ? { ...m, status: "applied", applied_at: now } : m
+        m.status === "pending" && m.score >= 70 ? { ...m, status: "applied", applied_at: now } : m
       ));
       setApplyMsg(`Opened ${topPending.length} job page${topPending.length !== 1 ? "s" : ""} — complete the applications there. ${applied} match${applied !== 1 ? "es" : ""} marked applied.`);
     } catch (err: any) {
@@ -647,7 +647,7 @@ export default function Dashboard() {
                     disabled={applyingAll}
                     className="px-4 py-1.5 rounded-xl text-sm font-semibold bg-indigo-500 hover:bg-indigo-400 text-white transition disabled:opacity-50 disabled:cursor-wait"
                   >
-                    {applyingAll ? "Applying…" : "Apply All (≥75%)"}
+                    {applyingAll ? "Applying…" : "Apply All (≥70%)"}
                   </button>
                 </div>
               </div>
@@ -706,11 +706,11 @@ export default function Dashboard() {
                         <div className="space-y-1.5">
                           {diagReport.top_10_raw.map((m: any, i: number) => (
                             <div key={i} className="flex items-center gap-3">
-                              <span className={`text-xs font-black w-12 shrink-0 ${m.score >= 75 ? "text-green-500" : m.score >= 60 ? "text-amber-500" : "text-slate-400"}`}>
+                              <span className={`text-xs font-black w-12 shrink-0 ${m.score >= 70 ? "text-green-500" : m.score >= 55 ? "text-amber-500" : "text-slate-400"}`}>
                                 {m.score}%
                               </span>
                               <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
-                                <div className={`h-full rounded-full ${m.score >= 75 ? "bg-green-500" : m.score >= 60 ? "bg-amber-400" : "bg-slate-400"}`}
+                                <div className={`h-full rounded-full ${m.score >= 70 ? "bg-green-500" : m.score >= 55 ? "bg-amber-400" : "bg-slate-400"}`}
                                   style={{ width: `${m.score}%` }} />
                               </div>
                               <span className="text-xs truncate max-w-[180px]">{m.title} — {m.company}</span>

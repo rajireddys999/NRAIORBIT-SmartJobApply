@@ -16,9 +16,9 @@ from backend.agents.resume_matcher import composite_score, extract_skills, _cosi
 
 router = APIRouter()
 
-SAVE_THRESHOLD   = 75.0
-STRONG_THRESHOLD = 85.0
-EXCELLENT_THRESHOLD = 93.0
+SAVE_THRESHOLD      = 50.0
+STRONG_THRESHOLD    = 70.0
+EXCELLENT_THRESHOLD = 82.0
 
 
 @router.get("/diagnose")
@@ -107,9 +107,9 @@ async def diagnose_matches(
     report["score_distribution"] = {
         "jobs_sampled": len(scored),
         "null_embeddings_skipped": null_count,
-        "excellent_93pct": above_93,
-        "strong_85pct": above_85,
-        "match_75pct": above_75,
+        "excellent_82pct": above_93,
+        "strong_70pct": above_85,
+        "match_50pct": above_75,
         "max_score": round(scores_only[0], 2) if scores_only else 0,
         "avg_score": round(sum(scores_only) / len(scores_only), 2) if scores_only else 0,
         "save_threshold": SAVE_THRESHOLD,
@@ -148,14 +148,14 @@ async def diagnose_matches(
     if above_75 == 0 and scores_only:
         report["verdict"] = "THRESHOLD_TOO_HIGH"
         report["fix"] = (
-            f"Best composite score is {report['score_distribution']['max_score']}% — below the 75% save threshold. "
+            f"Best composite score is {report['score_distribution']['max_score']}% — below the 50% save threshold. "
             f"Tips: (1) re-upload a more detailed resume with clear skill keywords, "
             f"(2) run Admin → Refresh Jobs to fetch fresh job descriptions, "
             f"(3) check the skill gap in top_10_raw to see what skills to add."
         )
     elif above_75 > 0 and saved == 0:
         report["verdict"] = "MATCHES_NOT_SAVED"
-        report["fix"] = f"{above_75} jobs scored ≥75% but no Match rows exist. Click Retry Match to save them."
+        report["fix"] = f"{above_75} jobs scored ≥50% but no Match rows exist. Click Retry Match to save them."
     elif saved > 0:
         report["verdict"] = "OK"
         report["fix"] = f"{saved} matches saved ({above_85} strong, {above_93} excellent). Check the Job Matches tab."
