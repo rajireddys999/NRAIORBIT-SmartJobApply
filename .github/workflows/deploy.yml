@@ -1,11 +1,14 @@
-name: Deploy — Netlify + Railway
+name: Deploy — Netlify
+
+# Railway deploys automatically via its own GitHub integration
+# (Service Settings → Source → GitHub repo → branch: main).
+# No Railway token or CLI needed here.
 
 on:
   push:
     branches: [main]
 
 jobs:
-  # ── 1. Deploy frontend → Netlify ────────────────────────────
   deploy-frontend:
     name: Frontend → Netlify
     runs-on: ubuntu-latest
@@ -41,31 +44,3 @@ jobs:
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID:    ${{ secrets.NETLIFY_SITE_ID }}
-
-  # ── 2. Deploy backend → Railway ─────────────────────────────
-  deploy-backend:
-    name: Backend → Railway
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy backend service
-        run: railway up --service backend --detach
-        env:
-          RAILWAY_TOKEN:      ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: 13d683de-fb50-40b9-9c5b-14968fd1effb
-
-      - name: Deploy worker service
-        run: railway up --service worker --detach
-        env:
-          RAILWAY_TOKEN:      ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: 13d683de-fb50-40b9-9c5b-14968fd1effb
-
-      - name: Deploy beat service
-        run: railway up --service beat --detach
-        env:
-          RAILWAY_TOKEN:      ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: 13d683de-fb50-40b9-9c5b-14968fd1effb
