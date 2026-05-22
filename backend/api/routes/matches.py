@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends, Query
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, and_
 
 from backend.models.database import get_db
-from backend.models.match import Match
+from backend.models.match import Match, MatchStatus
 from backend.models.job import Job
 from backend.api.deps import get_current_user
 from backend.models.user import User
@@ -47,3 +50,48 @@ async def list_matches(
         }
         for m, j in rows
     ]
+
+
+@router.post("/{match_id}/apply")
+async def apply_match(
+    match_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Employee marks a specific match as applied."""
+    result = await db.execute(
+        select(Match).where(and_(
+            Match.id == uuid.UUID(match_id),
+            Match.user_id == current_user.id,
+        ))
+    )
+    match = result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    match.status = MatchStatus.applied
+    match.applied_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"match_id": match_id, "status": "applied"}
+
+
+@router.post("/apply-all")
+async def apply_all_matches(
+    min_score: float = Query(50.0, ge=0, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Employee applies to all pending matches above min_score in one click."""
+    result = await db.execute(
+        select(Match).where(and_(
+            Match.user_id == current_user.id,
+            Match.status == MatchStatus.pending,
+            Match.score >= min_score,
+        ))
+    )
+    pending = result.scalars().all()
+    now = datetime.now(timezone.utc)
+    for match in pending:
+        match.status = MatchStatus.applied
+        match.applied_at = now
+    await db.commit()
+    return {"applied": len(pending)}

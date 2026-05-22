@@ -78,6 +78,24 @@ export async function getMatches(token: string, minScore = 0) {
   return res.json();
 }
 
+export async function applyMatch(token: string, matchId: string) {
+  const res = await fetch(`${BASE}/api/matches/${matchId}/apply`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(await extractError(res, "Failed to apply"));
+  return res.json();
+}
+
+export async function applyAllMatches(token: string, minScore = 50) {
+  const res = await fetch(`${BASE}/api/matches/apply-all?min_score=${minScore}`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(await extractError(res, "Failed to apply all"));
+  return res.json() as Promise<{ applied: number }>;
+}
+
 export async function getApplications(token: string) {
   const res = await fetch(`${BASE}/api/applications/`, {
     headers: authHeaders(token),

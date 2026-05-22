@@ -70,13 +70,6 @@ def run_matching(self, user_id: str, resume_id: str):
                 matched += 1
 
         db.commit()
-
-        # Trigger auto-apply for high-scoring matches
-        celery_app.send_task(
-            "backend.agents.auto_apply.apply_pending",
-            args=[user_id],
-        )
-
         return {"matched": matched, "total_jobs": len(jobs)}
     except Exception as exc:
         raise self.retry(exc=exc, countdown=30)

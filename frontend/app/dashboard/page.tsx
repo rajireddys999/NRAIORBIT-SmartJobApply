@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getToken, getRole, clearToken } from "@/lib/auth";
-import { getMatches, getApplications, uploadResume } from "@/lib/api";
+import { getMatches, getApplications, uploadResume, applyMatch, applyAllMatches } from "@/lib/api";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -66,6 +66,9 @@ export default function Dashboard() {
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [activeTab, setActiveTab]       = useState<"matches" | "applied">("matches");
   const [dragging, setDragging]         = useState(false);
+  const [applying, setApplying]         = useState<string | null>(null); // match_id being applied
+  const [applyingAll, setApplyingAll]   = useState(false);
+  const [applyMsg, setApplyMsg]         = useState("");
   const isAdmin = getRole() === "admin";
 
   useEffect(() => {
@@ -97,6 +100,39 @@ export default function Dashboard() {
     const f = e.dataTransfer.files?.[0]; if (f) doUpload(f);
   };
   const handleLogout = () => { clearToken(); router.push("/login"); };
+
+  async function handleApply(matchId: string) {
+    const token = getToken()!;
+    setApplying(matchId); setApplyMsg("");
+    try {
+      await applyMatch(token, matchId);
+      setMatches(prev => prev.map(m =>
+        m.match_id === matchId ? { ...m, status: "applied", applied_at: new Date().toISOString() } : m
+      ));
+      setApplyMsg("Marked as applied.");
+    } catch (err: any) {
+      setApplyMsg(err.message || "Failed to apply.");
+    } finally {
+      setApplying(null);
+    }
+  }
+
+  async function handleApplyAll() {
+    const token = getToken()!;
+    setApplyingAll(true); setApplyMsg("");
+    try {
+      const { applied } = await applyAllMatches(token, 50);
+      const now = new Date().toISOString();
+      setMatches(prev => prev.map(m =>
+        m.status === "pending" ? { ...m, status: "applied", applied_at: now } : m
+      ));
+      setApplyMsg(`Applied to ${applied} job${applied !== 1 ? "s" : ""}.`);
+    } catch (err: any) {
+      setApplyMsg(err.message || "Failed to apply all.");
+    } finally {
+      setApplyingAll(false);
+    }
+  }
 
   const avgScore = matches.length
     ? (matches.reduce((s, m) => s + m.score, 0) / matches.length).toFixed(1)
@@ -214,6 +250,29 @@ export default function Dashboard() {
         {/* Job Matches */}
         {activeTab === "matches" && (
           <div className="space-y-3">
+            {/* Apply All / Auto-apply toolbar */}
+            {matches.some(m => m.status === "pending") && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-5 py-3 mb-1"
+                style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+                <p className="text-sm text-[var(--text-muted)]">
+                  <span className="font-semibold text-[var(--text)]">{matches.filter(m => m.status === "pending").length}</span> pending match{matches.filter(m => m.status === "pending").length !== 1 ? "es" : ""} — review and apply below
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleApplyAll}
+                    disabled={applyingAll}
+                    className="px-4 py-1.5 rounded-xl text-sm font-semibold bg-indigo-500 hover:bg-indigo-400 text-white transition disabled:opacity-50 disabled:cursor-wait"
+                  >
+                    {applyingAll ? "Applying…" : "Apply All Matches"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {applyMsg && (
+              <div className="px-4 py-2 rounded-xl text-sm border border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400">
+                {applyMsg}
+              </div>
+            )}
             {matches.length === 0 ? (
               <div className="rounded-2xl border p-16 text-center"
                 style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
@@ -284,17 +343,30 @@ export default function Dashboard() {
                         </span>
                       ) : null;
                     })()}
-                    {m.job?.source_url && (
-                      <a
-                        href={m.job.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-auto text-xs font-semibold px-3 py-1 rounded-lg bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border border-indigo-500/25 hover:bg-indigo-500/20 transition"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        Apply Now →
-                      </a>
-                    )}
+                    <div className="ml-auto flex items-center gap-2">
+                      {m.job?.source_url && (
+                        <a
+                          href={m.job.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-semibold px-3 py-1 rounded-lg bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border border-indigo-500/25 hover:bg-indigo-500/20 transition"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          View Job →
+                        </a>
+                      )}
+                      {m.status === "pending" ? (
+                        <button
+                          onClick={() => handleApply(m.match_id)}
+                          disabled={applying === m.match_id}
+                          className="text-xs font-semibold px-3 py-1 rounded-lg bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30 hover:bg-green-500/25 transition disabled:opacity-50"
+                        >
+                          {applying === m.match_id ? "…" : "Apply"}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-[var(--text-muted)]">Applied ✓</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -310,7 +382,7 @@ export default function Dashboard() {
                 style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
                 <div className="text-5xl mb-4">🚀</div>
                 <p className="font-semibold text-lg mb-1">No applications yet</p>
-                <p className="text-[var(--text-muted)] text-sm">Once your score clears 75%, the AI auto-applies on your behalf.</p>
+                <p className="text-[var(--text-muted)] text-sm">Review your matches and click Apply on the ones you want to submit.</p>
               </div>
             ) : applications.map(a => (
               <div key={a.match_id}
