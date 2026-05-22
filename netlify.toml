@@ -1,15 +1,12 @@
 [build]
   base    = "frontend"
   command = "npm run build"
-  publish = ".next"
+  publish = "out"
 
 [build.environment]
   NODE_VERSION = "20"
 
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-
-# Redirect all /api/* calls to Railway backend — keeps auth cookies on same origin
+# Proxy /api/* to Railway backend — avoids CORS and keeps cookies same-origin
 [[redirects]]
   from   = "/api/*"
   to     = "https://backend-production-6a83.up.railway.app/api/:splat"
@@ -17,7 +14,7 @@
   force  = true
 
 [context.production.environment]
-  NEXT_PUBLIC_API_URL = ""   # empty = use /api proxy
+  NEXT_PUBLIC_API_URL = ""
 
 [context.deploy-preview.environment]
   NEXT_PUBLIC_API_URL = ""

@@ -33,7 +33,7 @@ jobs:
       - name: Deploy to Netlify
         uses: nwtgck/actions-netlify@v3
         with:
-          publish-dir:       frontend/.next
+          publish-dir:       frontend/out
           production-branch: main
           production-deploy: true
           deploy-message:    "Deploy from GitHub Actions — ${{ github.sha }}"
