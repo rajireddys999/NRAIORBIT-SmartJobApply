@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getToken, getRole, clearToken } from "@/lib/auth";
-import { adminGetUsers, adminGetStats, adminApprove, adminRevoke } from "@/lib/api";
+import { adminGetUsers, adminGetStats, adminApprove, adminRevoke, refreshJobs } from "@/lib/api";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -46,6 +46,8 @@ export default function AdminPage() {
   const [filter, setFilter] = useState<FilterTab>("all");
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState("");
 
   useEffect(() => {
     const token = getToken();
@@ -80,6 +82,20 @@ export default function AdminPage() {
     } finally { setActing(null); }
   }
 
+  async function handleRefreshJobs() {
+    const token = getToken()!;
+    setRefreshing(true);
+    setRefreshMsg("");
+    try {
+      await refreshJobs(token);
+      setRefreshMsg("Job fetch queued — all 5 sources running. New jobs appear within 2–3 minutes.");
+    } catch {
+      setRefreshMsg("Failed to queue refresh. Try again.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const filtered = users.filter(u => {
     if (u.role === "admin") return false;
     return filter === "all" || u.status === filter;
@@ -112,16 +128,38 @@ export default function AdminPage() {
       <div className="max-w-5xl mx-auto px-6 py-8">
 
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-extrabold tracking-tight
-            dark:[background:linear-gradient(135deg,#fff_0%,#a5b4fc_50%,#818cf8_100%)]
-            dark:[-webkit-background-clip:text] dark:[-webkit-text-fill-color:transparent]
-            text-gray-900">
-            Admin Panel
-          </h1>
-          <p className="text-[var(--text-muted)] mt-1 text-sm">
-            Manage employee access — approve or revoke accounts.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight
+              dark:[background:linear-gradient(135deg,#fff_0%,#a5b4fc_50%,#818cf8_100%)]
+              dark:[-webkit-background-clip:text] dark:[-webkit-text-fill-color:transparent]
+              text-gray-900">
+              Admin Panel
+            </h1>
+            <p className="text-[var(--text-muted)] mt-1 text-sm">
+              Manage employee access — approve or revoke accounts.
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <button
+              onClick={handleRefreshJobs}
+              disabled={refreshing}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                refreshing
+                  ? "bg-indigo-400/30 text-indigo-300 cursor-wait"
+                  : "bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/25"
+              }`}
+            >
+              {refreshing ? "Queuing…" : "↺ Refresh Jobs"}
+            </button>
+            {refreshMsg && (
+              <p className={`text-xs text-right max-w-xs ${
+                refreshMsg.startsWith("Failed") ? "text-red-500" : "text-indigo-400"
+              }`}>
+                {refreshMsg}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Stat cards */}
