@@ -24,7 +24,7 @@ async def upload(
         raise HTTPException(status_code=400, detail="Only PDF resumes are accepted")
 
     raw = await file.read()
-    s3_url = upload_resume(file, str(current_user.id))
+    s3_url = upload_resume(raw, file.filename or "resume.pdf", str(current_user.id))
     parsed_text = parse_pdf_bytes(raw)
     embedding = await embed(parsed_text)
 
