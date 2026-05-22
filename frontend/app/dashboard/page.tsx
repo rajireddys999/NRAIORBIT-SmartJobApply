@@ -71,15 +71,24 @@ export default function Dashboard() {
   const [applyMsg, setApplyMsg]         = useState("");
   const [resumes, setResumes]           = useState<any[]>([]);
   const [deletingResume, setDeletingResume] = useState<string | null>(null);
-  const [matching, setMatching]         = useState(false); // AI matching in progress
+  const [matching, setMatching]         = useState(false);
+  const [loadError, setLoadError]       = useState("");
+  const [loadingData, setLoadingData]   = useState(true);
   const isAdmin = getRole() === "admin";
 
   useEffect(() => {
     const token = getToken();
     if (!token) { router.push("/login"); return; }
-    getMatches(token, 50).then(setMatches).catch(() => {});
-    getApplications(token).then(setApplications).catch(() => {});
-    getResumes(token).then(setResumes).catch(() => {});
+    setLoadingData(true);
+    Promise.all([
+      getMatches(token, 50).catch((e) => { setLoadError(e.message || "Failed to load matches"); return []; }),
+      getApplications(token).catch(() => []),
+      getResumes(token).catch(() => []),
+    ]).then(([m, a, r]) => {
+      setMatches(m);
+      setApplications(a);
+      setResumes(r);
+    }).finally(() => setLoadingData(false));
   }, [router]);
 
   async function doUpload(file: File) {
@@ -289,6 +298,14 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* Error banner */}
+        {loadError && (
+          <div className="mb-6 rounded-xl px-4 py-3 text-sm border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 flex items-center gap-2">
+            <span>⚠️</span>
+            <span><strong>API error:</strong> {loadError} — check that you are logged in and the backend is reachable.</span>
+          </div>
+        )}
 
         {/* Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

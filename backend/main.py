@@ -63,3 +63,34 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/health/detail")
+async def health_detail():
+    """Diagnostic endpoint — checks DB, Redis, and job count."""
+    import redis as redis_lib
+    from backend.models.database import AsyncSessionLocal
+    from sqlalchemy import text
+
+    result: dict = {"db": "error", "redis": "error", "jobs": 0, "status": "degraded"}
+
+    # DB check
+    try:
+        async with AsyncSessionLocal() as session:
+            row = await session.execute(text("SELECT COUNT(*) FROM jobs"))
+            result["jobs"] = row.scalar_one()
+            result["db"] = "ok"
+    except Exception as e:
+        result["db_error"] = str(e)
+
+    # Redis / Celery check
+    try:
+        r = redis_lib.from_url(settings.redis_url, socket_connect_timeout=3)
+        r.ping()
+        result["redis"] = "ok"
+    except Exception as e:
+        result["redis_error"] = str(e)
+
+    if result["db"] == "ok" and result["redis"] == "ok":
+        result["status"] = "ok"
+    return result
