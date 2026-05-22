@@ -1,9 +1,7 @@
 """
 Match Diagnostic Agent — explains why a user has 0 or few matches.
-Shows embedding coverage, raw cosine similarity distribution, and threshold analysis.
+Uses the same multi-signal composite scorer as the matcher so scores are consistent.
 """
-import uuid
-import numpy as np
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -14,14 +12,13 @@ from backend.models.resume import Resume
 from backend.models.job import Job
 from backend.models.match import Match
 from backend.api.deps import get_current_user
+from backend.agents.resume_matcher import composite_score, extract_skills, _cosine_similarity
 
 router = APIRouter()
 
-
-def _cosine_sim(a: list, b: list) -> float:
-    a, b = np.array(a, dtype=float), np.array(b, dtype=float)
-    denom = np.linalg.norm(a) * np.linalg.norm(b)
-    return float(np.dot(a, b) / denom) if denom else 0.0
+SAVE_THRESHOLD   = 75.0
+STRONG_THRESHOLD = 85.0
+EXCELLENT_THRESHOLD = 93.0
 
 
 @router.get("/diagnose")
@@ -31,8 +28,8 @@ async def diagnose_matches(
 ):
     """
     Scoring agent: analyses why matches are low/zero.
-    Returns resume status, job embedding coverage, raw score distribution,
-    and top-10 matches before threshold filtering.
+    Returns resume status, job embedding coverage, composite score distribution,
+    top-10 matches before threshold, and skill gap analysis.
     """
     report: dict = {}
 
@@ -48,13 +45,17 @@ async def diagnose_matches(
     if not resume:
         return {"error": "no_resume", "message": "No resume uploaded yet. Upload a PDF to begin matching."}
 
-    resume_embedding = resume.embedding  # deserialized by JsonList TypeDecorator
+    resume_embedding = resume.embedding
+    resume_text = resume.parsed_text
+
     report["resume"] = {
         "id": str(resume.id),
         "filename": resume.s3_url.rsplit("/", 1)[-1] if "/" in (resume.s3_url or "") else "resume.pdf",
         "uploaded_at": resume.uploaded_at,
         "has_embedding": resume_embedding is not None,
         "embedding_dim": len(resume_embedding) if resume_embedding else 0,
+        "has_text": bool(resume_text),
+        "skills_detected": sorted(extract_skills(resume_text or "")),
     }
 
     if resume_embedding is None:
@@ -82,49 +83,60 @@ async def diagnose_matches(
         )
         return report
 
-    # ── 3. Sample raw cosine similarities (top 20 jobs by score) ─────────────
+    # ── 3. Composite score distribution (sample up to 500 jobs) ──────────────
     jobs_row = await db.execute(select(Job).where(Job.embedding.isnot(None)).limit(500))
     jobs = jobs_row.scalars().all()
 
     scored = []
-    null_embedding_count = 0
+    null_count = 0
     for job in jobs:
         if job.embedding is None:
-            null_embedding_count += 1
+            null_count += 1
             continue
-        sim = _cosine_sim(resume_embedding, job.embedding)
-        scored.append((sim * 100, job))
+        sim = _cosine_similarity(resume_embedding, job.embedding)
+        score = composite_score(sim, resume_text, job.description, job.title)
+        scored.append((score, job))
 
     scored.sort(key=lambda x: x[0], reverse=True)
 
     scores_only = [s for s, _ in scored]
-    above_75 = sum(1 for s in scores_only if s >= 75)
-    above_65 = sum(1 for s in scores_only if s >= 65)
-    above_50 = sum(1 for s in scores_only if s >= 50)
+    above_93 = sum(1 for s in scores_only if s >= EXCELLENT_THRESHOLD)
+    above_85 = sum(1 for s in scores_only if s >= STRONG_THRESHOLD)
+    above_75 = sum(1 for s in scores_only if s >= SAVE_THRESHOLD)
 
     report["score_distribution"] = {
         "jobs_sampled": len(scored),
-        "null_embeddings_skipped": null_embedding_count,
-        "above_75pct": above_75,
-        "above_65pct": above_65,
-        "above_50pct": above_50,
+        "null_embeddings_skipped": null_count,
+        "excellent_93pct": above_93,
+        "strong_85pct": above_85,
+        "match_75pct": above_75,
         "max_score": round(scores_only[0], 2) if scores_only else 0,
         "avg_score": round(sum(scores_only) / len(scores_only), 2) if scores_only else 0,
-        "save_threshold": 75,
+        "save_threshold": SAVE_THRESHOLD,
+        "strong_threshold": STRONG_THRESHOLD,
+        "excellent_threshold": EXCELLENT_THRESHOLD,
     }
 
-    # ── 4. Top 10 matches (before threshold) ─────────────────────────────────
-    report["top_10_raw"] = [
-        {
+    # ── 4. Top 10 matches with skill breakdown ────────────────────────────────
+    top10 = []
+    for score, job in scored[:10]:
+        job_skills = sorted(extract_skills(job.description or ""))
+        resume_skills = sorted(extract_skills(resume_text or ""))
+        shared = sorted(set(resume_skills) & set(job_skills))
+        missing = sorted(set(job_skills) - set(resume_skills))
+        top10.append({
             "score": round(score, 2),
             "title": job.title,
             "company": job.company,
             "source": job.source,
             "location": job.location,
-            "would_be_saved": score >= 75,
-        }
-        for score, job in scored[:10]
-    ]
+            "would_be_saved": score >= SAVE_THRESHOLD,
+            "is_strong": score >= STRONG_THRESHOLD,
+            "is_excellent": score >= EXCELLENT_THRESHOLD,
+            "shared_skills": shared[:10],
+            "missing_skills": missing[:10],
+        })
+    report["top_10_raw"] = top10
 
     # ── 5. Saved matches ──────────────────────────────────────────────────────
     saved = await db.scalar(
@@ -136,17 +148,17 @@ async def diagnose_matches(
     if above_75 == 0 and scores_only:
         report["verdict"] = "THRESHOLD_TOO_HIGH"
         report["fix"] = (
-            f"Best raw score is {report['score_distribution']['max_score']}% — below the 75% save threshold. "
-            f"This means your resume and the job descriptions don't share enough semantic overlap "
-            f"with the MiniLM model. Try: (1) ensure job embeddings are fresh after a Refresh Jobs, "
-            f"(2) re-upload a more detailed resume, or (3) the matching model may need calibration."
+            f"Best composite score is {report['score_distribution']['max_score']}% — below the 75% save threshold. "
+            f"Tips: (1) re-upload a more detailed resume with clear skill keywords, "
+            f"(2) run Admin → Refresh Jobs to fetch fresh job descriptions, "
+            f"(3) check the skill gap in top_10_raw to see what skills to add."
         )
     elif above_75 > 0 and saved == 0:
         report["verdict"] = "MATCHES_NOT_SAVED"
-        report["fix"] = "Matches exist in memory but weren't saved. Click Retry Match to re-run the full task."
+        report["fix"] = f"{above_75} jobs scored ≥75% but no Match rows exist. Click Retry Match to save them."
     elif saved > 0:
         report["verdict"] = "OK"
-        report["fix"] = f"{saved} matches saved. Check the Job Matches tab."
+        report["fix"] = f"{saved} matches saved ({above_85} strong, {above_93} excellent). Check the Job Matches tab."
     else:
         report["verdict"] = "UNKNOWN"
 
