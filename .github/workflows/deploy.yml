@@ -52,21 +52,27 @@ jobs:
     steps:
       - name: Redeploy backend
         run: |
-          curl -sS -f -X POST https://backboard.railway.app/graphql/v2 \
+          RESP=$(curl -sS -X POST https://backboard.railway.app/graphql/v2 \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"query\":\"mutation { serviceInstanceDeploy(environmentId: \\\"$ENV_ID\\\", serviceId: \\\"4c0e1958-bf97-459e-aeaf-0463d4b8879e\\\", latestCommit: true) }\"}"
+            -d "{\"query\":\"mutation { serviceInstanceDeploy(environmentId: \\\"$ENV_ID\\\", serviceId: \\\"4c0e1958-bf97-459e-aeaf-0463d4b8879e\\\", latestCommit: true) }\"}")
+          echo "backend: $RESP"
+          echo "$RESP" | grep -q '"errors"' && echo "::error::Railway API error" && exit 1 || true
 
       - name: Redeploy worker
         run: |
-          curl -sS -f -X POST https://backboard.railway.app/graphql/v2 \
+          RESP=$(curl -sS -X POST https://backboard.railway.app/graphql/v2 \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"query\":\"mutation { serviceInstanceDeploy(environmentId: \\\"$ENV_ID\\\", serviceId: \\\"edf5cfb7-24c1-42b9-973c-261ad6d75ed7\\\", latestCommit: true) }\"}"
+            -d "{\"query\":\"mutation { serviceInstanceDeploy(environmentId: \\\"$ENV_ID\\\", serviceId: \\\"edf5cfb7-24c1-42b9-973c-261ad6d75ed7\\\", latestCommit: true) }\"}")
+          echo "worker: $RESP"
+          echo "$RESP" | grep -q '"errors"' && echo "::error::Railway API error" && exit 1 || true
 
       - name: Redeploy beat
         run: |
-          curl -sS -f -X POST https://backboard.railway.app/graphql/v2 \
+          RESP=$(curl -sS -X POST https://backboard.railway.app/graphql/v2 \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"query\":\"mutation { serviceInstanceDeploy(environmentId: \\\"$ENV_ID\\\", serviceId: \\\"e0350d43-696d-496e-86b9-6b222238026b\\\", latestCommit: true) }\"}"
+            -d "{\"query\":\"mutation { serviceInstanceDeploy(environmentId: \\\"$ENV_ID\\\", serviceId: \\\"e0350d43-696d-496e-86b9-6b222238026b\\\", latestCommit: true) }\"}")
+          echo "beat: $RESP"
+          echo "$RESP" | grep -q '"errors"' && echo "::error::Railway API error" && exit 1 || true
