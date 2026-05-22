@@ -42,6 +42,7 @@ async def list_matches(
                 "company": j.company,
                 "location": j.location,
                 "source_url": j.source_url,
+                "source": j.source,
             },
         }
         for m, j in rows

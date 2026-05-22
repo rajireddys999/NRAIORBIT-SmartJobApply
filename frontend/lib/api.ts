@@ -33,11 +33,20 @@ export async function uploadResume(token: string, file: File) {
   return res.json();
 }
 
-export async function getJobs(token: string, page = 1) {
-  const res = await fetch(`${BASE}/api/jobs/?page=${page}&page_size=20`, {
+export async function getJobs(token: string, page = 1, pageSize = 100) {
+  const res = await fetch(`${BASE}/api/jobs/?page=${page}&page_size=${pageSize}`, {
     headers: authHeaders(token),
   });
   if (!res.ok) throw new Error("Failed to fetch jobs");
+  return res.json();
+}
+
+export async function refreshJobs(token: string) {
+  const res = await fetch(`${BASE}/api/jobs/refresh`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to trigger refresh");
   return res.json();
 }
 

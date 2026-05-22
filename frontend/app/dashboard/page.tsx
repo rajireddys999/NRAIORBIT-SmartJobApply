@@ -13,6 +13,25 @@ const SCORE_COLOR = (s: number) =>
 const SCORE_GLOW = (s: number) =>
   s >= 85 ? "shadow-emerald-500/30" : s >= 70 ? "shadow-green-500/30" : s >= 50 ? "shadow-yellow-500/20" : "";
 
+const SOURCE_LABEL: Record<string, string> = {
+  greenhouse: "Greenhouse", linkedin: "LinkedIn", themuse: "The Muse",
+  remoteok: "RemoteOK", arbeitnow: "Arbeitnow",
+};
+const SOURCE_STYLE: Record<string, string> = {
+  greenhouse: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25",
+  linkedin:   "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25",
+  themuse:    "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25",
+  remoteok:   "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/25",
+  arbeitnow:  "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25",
+};
+
+function detectLevel(title: string): "Entry" | "Senior" | null {
+  const t = title.toLowerCase();
+  if (/\b(entry.?level|junior|jr\.?|associate|new.?grad|intern|graduate)\b/.test(t)) return "Entry";
+  if (/\b(senior|sr\.?|lead|staff|principal|director|architect)\b/.test(t)) return "Senior";
+  return null;
+}
+
 const STATUS_BADGE: Record<string, string> = {
   applied: "bg-green-500/15 text-green-600 dark:text-green-300 border border-green-500/30",
   pending: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30",
@@ -233,6 +252,38 @@ export default function Dashboard() {
                     </div>
                     <span className="text-xs text-[var(--text-muted)] shrink-0">Match</span>
                   </div>
+
+                  {/* Badges + Apply Now */}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {m.job?.source && (
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${SOURCE_STYLE[m.job.source] ?? "bg-slate-500/10 text-slate-500 border-slate-500/20"}`}>
+                        {SOURCE_LABEL[m.job.source] ?? m.job.source}
+                      </span>
+                    )}
+                    {m.job?.title && (() => {
+                      const lvl = detectLevel(m.job.title);
+                      return lvl ? (
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
+                          lvl === "Entry"
+                            ? "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/25"
+                            : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
+                        }`}>
+                          {lvl === "Entry" ? "Entry Level" : "Senior"}
+                        </span>
+                      ) : null;
+                    })()}
+                    {m.job?.source_url && (
+                      <a
+                        href={m.job.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-auto text-xs font-semibold px-3 py-1 rounded-lg bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border border-indigo-500/25 hover:bg-indigo-500/20 transition"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        Apply Now →
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -261,10 +312,20 @@ export default function Dashboard() {
                     {a.job?.company ?? "—"}{a.job?.location ? ` · ${a.job.location}` : ""}
                   </p>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 flex flex-col items-end gap-1">
                   <p className="text-green-600 dark:text-green-400 text-sm font-semibold">Applied</p>
                   {a.applied_at && (
-                    <p className="text-[var(--text-muted)] text-xs mt-0.5">{new Date(a.applied_at).toLocaleDateString()}</p>
+                    <p className="text-[var(--text-muted)] text-xs">{new Date(a.applied_at).toLocaleDateString()}</p>
+                  )}
+                  {a.job?.source_url && (
+                    <a
+                      href={a.job.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border border-indigo-500/25 hover:bg-indigo-500/20 transition"
+                    >
+                      View Job →
+                    </a>
                   )}
                 </div>
               </div>
