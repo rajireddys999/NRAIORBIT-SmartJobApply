@@ -45,6 +45,7 @@ export default function JobBoard() {
   const [refreshMsg, setRefreshMsg] = useState("");
   const [locationFilter, setLocationFilter] = useState("All");
   const [sourceFilter, setSourceFilter] = useState("All");
+  const [levelFilter, setLevelFilter] = useState<"All" | "Entry" | "Senior" | "Mid">("All");
 
   useEffect(() => {
     const token = getToken();
@@ -75,9 +76,15 @@ export default function JobBoard() {
     return jobs.filter(j => {
       const locOk = locationFilter === "All" || j.location === locationFilter;
       const srcOk = sourceFilter === "All" || j.source === sourceFilter;
-      return locOk && srcOk;
+      if (!locOk || !srcOk) return false;
+      if (levelFilter === "All") return true;
+      const lvl = detectLevel(j.title);
+      if (levelFilter === "Entry")  return lvl === "Entry";
+      if (levelFilter === "Senior") return lvl === "Senior";
+      if (levelFilter === "Mid")    return lvl === null; // title has no entry/senior signal
+      return true;
     });
-  }, [jobs, locationFilter, sourceFilter]);
+  }, [jobs, locationFilter, sourceFilter, levelFilter]);
 
   async function handleRefresh() {
     const token = getToken();
@@ -119,7 +126,7 @@ export default function JobBoard() {
             <h1 className="text-2xl font-extrabold tracking-tight">Job Board</h1>
             <p className="text-[var(--text-muted)] text-sm mt-0.5">
               {loading ? "Loading…" : `${filtered.length} jobs`}
-              {locationFilter !== "All" || sourceFilter !== "All"
+              {locationFilter !== "All" || sourceFilter !== "All" || levelFilter !== "All"
                 ? ` (filtered from ${jobs.length})`
                 : " fetched from 5 sources"}
             </p>
@@ -171,9 +178,23 @@ export default function JobBoard() {
               ))}
             </select>
           </div>
-          {(locationFilter !== "All" || sourceFilter !== "All") && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-[var(--text-muted)] font-medium">Experience</label>
+            <select
+              value={levelFilter}
+              onChange={e => setLevelFilter(e.target.value as typeof levelFilter)}
+              className="text-sm px-3 py-1.5 rounded-lg border focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              style={{ background: "var(--bg-card)", borderColor: "var(--border)", color: "var(--text)" }}
+            >
+              <option value="All">All Levels</option>
+              <option value="Entry">Entry Level / Junior</option>
+              <option value="Senior">Senior / Lead</option>
+              <option value="Mid">Mid Level</option>
+            </select>
+          </div>
+          {(locationFilter !== "All" || sourceFilter !== "All" || levelFilter !== "All") && (
             <button
-              onClick={() => { setLocationFilter("All"); setSourceFilter("All"); }}
+              onClick={() => { setLocationFilter("All"); setSourceFilter("All"); setLevelFilter("All"); }}
               className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] underline transition"
             >
               Clear filters
