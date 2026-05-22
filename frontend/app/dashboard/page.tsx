@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getToken, getRole, clearToken } from "@/lib/auth";
-import { getMatches, getApplications, uploadResume, applyMatch, applyAllMatches, getResumes, deleteResume, resumeTaskStatus } from "@/lib/api";
+import { getMatches, getApplications, uploadResume, applyMatch, applyAllMatches, getResumes, deleteResume, resumeTaskStatus, retryMatching } from "@/lib/api";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -92,6 +92,36 @@ export default function Dashboard() {
     }).finally(() => setLoadingData(false));
   }, [router]);
 
+  function startPolling(token: string, task_id: string, successMsg?: (r: any) => string) {
+    setMatching(true);
+    setMatchProgress(null);
+    const deadline = Date.now() + 180_000;
+    const poll = async () => {
+      if (Date.now() > deadline) { setMatching(false); setMatchProgress(null); setUploadMsg("Matching timed out — worker may be unavailable."); return; }
+      try {
+        const res = await resumeTaskStatus(token, task_id);
+        if (res.state === "SUCCESS") {
+          const fresh = await getMatches(token, 50);
+          setMatches(fresh);
+          setMatching(false);
+          setMatchProgress(null);
+          setUploadMsg(successMsg ? successMsg(res.result) : `Matched against ${res.result?.total_jobs ?? "all"} jobs — ${fresh.length} match${fresh.length !== 1 ? "es" : ""} found.`);
+        } else if (res.state === "FAILURE") {
+          setMatching(false);
+          setMatchProgress(null);
+          setUploadMsg("Matching failed — check that the Celery worker is running on Railway.");
+        } else if (res.state === "PROGRESS" && res.meta) {
+          setMatchProgress(res.meta);
+          setUploadMsg(res.meta.status ?? "Matching in progress…");
+          setTimeout(poll, 2000);
+        } else {
+          setTimeout(poll, 3000);
+        }
+      } catch { setTimeout(poll, 3000); }
+    };
+    setTimeout(poll, 3000);
+  }
+
   async function doUpload(file: File) {
     const token = getToken()!;
     setUploading(true); setUploadMsg(""); setUploadSuccess(false);
@@ -99,40 +129,25 @@ export default function Dashboard() {
       const { task_id, id, filename, uploaded_at } = await uploadResume(token, file);
       setUploadSuccess(true);
       setUploadMsg("Resume uploaded — AI is matching jobs…");
-      // Prepend to resume list immediately
       setResumes(prev => [{ id, filename, uploaded_at, has_embedding: false, download_url: "" }, ...prev]);
-      // Poll matching task until done, then refresh matches + stats
-      setMatching(true);
-      setMatchProgress(null);
-      const deadline = Date.now() + 180_000;
-      const poll = async () => {
-        if (Date.now() > deadline) { setMatching(false); setMatchProgress(null); return; }
-        try {
-          const res = await resumeTaskStatus(token, task_id);
-          if (res.state === "SUCCESS") {
-            const fresh = await getMatches(token, 50);
-            setMatches(fresh);
-            setMatching(false);
-            setMatchProgress(null);
-            setUploadMsg(`Matched against ${res.result?.total_jobs ?? "all"} jobs — ${fresh.length} match${fresh.length !== 1 ? "es" : ""} found.`);
-          } else if (res.state === "FAILURE") {
-            setMatching(false);
-            setMatchProgress(null);
-            setUploadMsg("Matching failed — please try again.");
-          } else if (res.state === "PROGRESS" && res.meta) {
-            setMatchProgress(res.meta);
-            setUploadMsg(res.meta.status ?? "Matching in progress…");
-            setTimeout(poll, 2000);
-          } else {
-            setTimeout(poll, 3000);
-          }
-        } catch { setTimeout(poll, 3000); }
-      };
-      setTimeout(poll, 3000);
+      startPolling(token, task_id);
     } catch (err: any) {
       setUploadMsg(err.message || "Upload failed.");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleRetryMatching(resumeId: string) {
+    const token = getToken()!;
+    setUploadSuccess(true);
+    setUploadMsg("Retrying matching…");
+    try {
+      const { task_id } = await retryMatching(token, resumeId);
+      startPolling(token, task_id);
+    } catch (err: any) {
+      setUploadSuccess(false);
+      setUploadMsg(err.message || "Failed to retry matching.");
     }
   }
 
@@ -314,13 +329,22 @@ export default function Dashboard() {
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDeleteResume(r.id)}
-                    disabled={deletingResume === r.id}
-                    className="shrink-0 text-xs font-semibold px-3 py-1 rounded-lg bg-red-500/10 text-red-500 border border-red-500/25 hover:bg-red-500/20 transition disabled:opacity-50"
-                  >
-                    {deletingResume === r.id ? "…" : "Delete"}
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => handleRetryMatching(r.id)}
+                      disabled={matching}
+                      className="text-xs font-semibold px-3 py-1 rounded-lg bg-indigo-500/10 text-indigo-500 border border-indigo-500/25 hover:bg-indigo-500/20 transition disabled:opacity-50"
+                    >
+                      {matching ? "Matching…" : "Retry Match"}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteResume(r.id)}
+                      disabled={deletingResume === r.id}
+                      className="text-xs font-semibold px-3 py-1 rounded-lg bg-red-500/10 text-red-500 border border-red-500/25 hover:bg-red-500/20 transition disabled:opacity-50"
+                    >
+                      {deletingResume === r.id ? "…" : "Delete"}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

@@ -84,6 +84,33 @@ async def match_task_status(
     return payload
 
 
+@router.post("/{resume_id}/retry-matching")
+async def retry_matching(
+    resume_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-trigger the matching Celery task for an existing resume."""
+    result = await db.execute(
+        select(Resume).where(
+            Resume.id == uuid.UUID(resume_id),
+            Resume.user_id == current_user.id,
+        )
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if resume.embedding is None:
+        raise HTTPException(status_code=400, detail="Resume has no embedding — please re-upload")
+
+    from backend.celery_app import celery_app
+    task = celery_app.send_task(
+        "backend.agents.resume_matcher.run_matching",
+        args=[str(current_user.id), str(resume.id)],
+    )
+    return {"task_id": task.id}
+
+
 @router.get("/")
 async def list_resumes(
     current_user: User = Depends(get_current_user),

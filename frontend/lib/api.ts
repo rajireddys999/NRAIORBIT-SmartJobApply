@@ -70,6 +70,15 @@ export async function resumeTaskStatus(token: string, taskId: string) {
   return res.json() as Promise<{ task_id: string; state: string; result?: any; error?: string; meta?: { scanned: number; total: number; matched: number; strong: number; status: string } }>;
 }
 
+export async function retryMatching(token: string, resumeId: string) {
+  const res = await fetch(`${BASE}/api/resumes/${resumeId}/retry-matching`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(await extractError(res, "Failed to retry matching"));
+  return res.json() as Promise<{ task_id: string }>;
+}
+
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
 export async function getJobs(token: string, page = 1, pageSize = 100) {
