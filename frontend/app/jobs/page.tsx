@@ -55,6 +55,7 @@ export default function JobBoard() {
   const [locationFilter, setLocationFilter] = useState("All");
   const [sourceFilter, setSourceFilter] = useState("All");
   const [levelFilter, setLevelFilter] = useState<"All" | "Entry" | "Senior" | "Mid">("All");
+  const [sortKey, setSortKey] = useState<"fetched_at" | "posted_at" | "company" | "title">("fetched_at");
 
   useEffect(() => {
     const token = getToken();
@@ -82,7 +83,7 @@ export default function JobBoard() {
   }, [jobs]);
 
   const filtered = useMemo(() => {
-    return jobs.filter(j => {
+    const list = jobs.filter(j => {
       const locOk = locationFilter === "All" || j.location === locationFilter;
       const srcOk = sourceFilter === "All" || j.source === sourceFilter;
       if (!locOk || !srcOk) return false;
@@ -90,10 +91,24 @@ export default function JobBoard() {
       const lvl = detectLevel(j.title);
       if (levelFilter === "Entry")  return lvl === "Entry";
       if (levelFilter === "Senior") return lvl === "Senior";
-      if (levelFilter === "Mid")    return lvl === null; // title has no entry/senior signal
+      if (levelFilter === "Mid")    return lvl === null;
       return true;
     });
-  }, [jobs, locationFilter, sourceFilter, levelFilter]);
+
+    return [...list].sort((a, b) => {
+      if (sortKey === "fetched_at") {
+        return new Date(b.fetched_at).getTime() - new Date(a.fetched_at).getTime();
+      }
+      if (sortKey === "posted_at") {
+        const aDate = a.posted_at ? new Date(a.posted_at).getTime() : 0;
+        const bDate = b.posted_at ? new Date(b.posted_at).getTime() : 0;
+        return bDate - aDate;
+      }
+      if (sortKey === "company") return a.company.localeCompare(b.company);
+      if (sortKey === "title")   return a.title.localeCompare(b.title);
+      return 0;
+    });
+  }, [jobs, locationFilter, sourceFilter, levelFilter, sortKey]);
 
   async function handleRefresh() {
     const token = getToken();
@@ -257,12 +272,26 @@ export default function JobBoard() {
               <option value="Mid">Mid Level</option>
             </select>
           </div>
-          {(locationFilter !== "All" || sourceFilter !== "All" || levelFilter !== "All") && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-[var(--text-muted)] font-medium">Sort</label>
+            <select
+              value={sortKey}
+              onChange={e => setSortKey(e.target.value as typeof sortKey)}
+              className="text-sm px-3 py-1.5 rounded-lg border focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              style={{ background: "var(--bg-card)", borderColor: "var(--border)", color: "var(--text)" }}
+            >
+              <option value="fetched_at">Latest Fetched</option>
+              <option value="posted_at">Latest Posted</option>
+              <option value="company">Company A→Z</option>
+              <option value="title">Title A→Z</option>
+            </select>
+          </div>
+          {(locationFilter !== "All" || sourceFilter !== "All" || levelFilter !== "All" || sortKey !== "fetched_at") && (
             <button
-              onClick={() => { setLocationFilter("All"); setSourceFilter("All"); setLevelFilter("All"); }}
+              onClick={() => { setLocationFilter("All"); setSourceFilter("All"); setLevelFilter("All"); setSortKey("fetched_at"); }}
               className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] underline transition"
             >
-              Clear filters
+              Clear all
             </button>
           )}
         </div>
