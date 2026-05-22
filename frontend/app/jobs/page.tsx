@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getToken } from "@/lib/auth";
+import { getToken, getRole } from "@/lib/auth";
 import { getJobs, refreshJobs } from "@/lib/api";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -48,7 +48,9 @@ export default function JobBoard() {
 
   useEffect(() => {
     const token = getToken();
+    const role = getRole();
     if (!token) { router.push("/login"); return; }
+    if (role !== "admin") { router.push("/dashboard"); return; }
     setLoading(true);
     getJobs(token, 1, 100).then(setJobs).finally(() => setLoading(false));
   }, [router]);

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getToken, clearToken } from "@/lib/auth";
+import { getToken, getRole, clearToken } from "@/lib/auth";
 import { getMatches, getApplications, uploadResume } from "@/lib/api";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -62,6 +62,7 @@ export default function Dashboard() {
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [activeTab, setActiveTab]       = useState<"matches" | "applied">("matches");
   const [dragging, setDragging]         = useState(false);
+  const isAdmin = getRole() === "admin";
 
   useEffect(() => {
     const token = getToken();
@@ -106,9 +107,16 @@ export default function Dashboard() {
         style={{ background: "var(--bg-nav)", borderColor: "var(--border)" }}>
         <Link href="/"><Logo size="sm" /></Link>
         <div className="flex gap-3 items-center">
-          <Link href="/jobs" className="text-[var(--text-muted)] hover:text-[var(--text)] text-sm transition px-3 py-1.5 rounded-lg">
-            Job Board
-          </Link>
+          {isAdmin && (
+            <>
+              <Link href="/admin" className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-500 dark:text-indigo-400 border border-indigo-500/25 hover:bg-indigo-500/25 transition">
+                Admin Panel
+              </Link>
+              <Link href="/jobs" className="text-[var(--text-muted)] hover:text-[var(--text)] text-sm transition px-3 py-1.5 rounded-lg">
+                Job Board
+              </Link>
+            </>
+          )}
           <ThemeToggle />
           <button onClick={handleLogout}
             className="text-[var(--text-muted)] hover:text-red-500 text-sm transition px-3 py-1.5 rounded-lg">

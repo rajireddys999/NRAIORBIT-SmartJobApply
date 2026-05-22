@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 
-from backend.api.routes import auth, resumes, jobs, matches, applications
+from backend.api.routes import auth, resumes, jobs, matches, applications, admin
 from backend.models.database import init_db
 from backend.config import settings
 
@@ -57,6 +57,7 @@ app.include_router(resumes.router, prefix="/api/resumes", tags=["resumes"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(matches.router, prefix="/api/matches", tags=["matches"])
 app.include_router(applications.router, prefix="/api/applications", tags=["applications"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 
 @app.get("/health")

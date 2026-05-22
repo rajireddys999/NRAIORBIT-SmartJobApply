@@ -4,6 +4,8 @@ function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
 export async function register(email: string, name: string, password: string) {
   const res = await fetch(`${BASE}/api/auth/register`, {
     method: "POST",
@@ -11,15 +13,25 @@ export async function register(email: string, name: string, password: string) {
     body: JSON.stringify({ email, name, password }),
   });
   if (!res.ok) throw new Error((await res.json()).detail ?? "Registration failed");
-  return res.json();
+  return res.json() as Promise<{
+    status: "active" | "pending";
+    role: string;
+    access_token?: string;
+    message?: string;
+  }>;
 }
 
 export async function login(email: string, password: string) {
   const body = new URLSearchParams({ username: email, password });
   const res = await fetch(`${BASE}/api/auth/login`, { method: "POST", body });
-  if (!res.ok) throw new Error((await res.json()).detail ?? "Login failed");
-  return res.json();
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Login failed");
+  }
+  return res.json() as Promise<{ access_token: string; token_type: string; role: string }>;
 }
+
+// ── Resumes ───────────────────────────────────────────────────────────────────
 
 export async function uploadResume(token: string, file: File) {
   const form = new FormData();
@@ -32,6 +44,8 @@ export async function uploadResume(token: string, file: File) {
   if (!res.ok) throw new Error((await res.json()).detail ?? "Upload failed");
   return res.json();
 }
+
+// ── Jobs ──────────────────────────────────────────────────────────────────────
 
 export async function getJobs(token: string, page = 1, pageSize = 100) {
   const res = await fetch(`${BASE}/api/jobs/?page=${page}&page_size=${pageSize}`, {
@@ -50,6 +64,8 @@ export async function refreshJobs(token: string) {
   return res.json();
 }
 
+// ── Matches & Applications ────────────────────────────────────────────────────
+
 export async function getMatches(token: string, minScore = 0) {
   const res = await fetch(`${BASE}/api/matches/?min_score=${minScore}`, {
     headers: authHeaders(token),
@@ -63,5 +79,41 @@ export async function getApplications(token: string) {
     headers: authHeaders(token),
   });
   if (!res.ok) throw new Error("Failed to fetch applications");
+  return res.json();
+}
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+export async function adminGetUsers(token: string) {
+  const res = await fetch(`${BASE}/api/admin/users`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("Failed to fetch users");
+  return res.json() as Promise<{
+    id: string; name: string; email: string;
+    role: string; status: string; created_at: string;
+  }[]>;
+}
+
+export async function adminGetStats(token: string) {
+  const res = await fetch(`${BASE}/api/admin/stats`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("Failed to fetch stats");
+  return res.json() as Promise<{
+    total_employees: number; pending: number; active: number;
+    revoked: number; total_jobs: number; total_applications: number;
+  }>;
+}
+
+export async function adminApprove(token: string, userId: string) {
+  const res = await fetch(`${BASE}/api/admin/users/${userId}/approve`, {
+    method: "POST", headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to approve user");
+  return res.json();
+}
+
+export async function adminRevoke(token: string, userId: string) {
+  const res = await fetch(`${BASE}/api/admin/users/${userId}/revoke`, {
+    method: "POST", headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to revoke user");
   return res.json();
 }

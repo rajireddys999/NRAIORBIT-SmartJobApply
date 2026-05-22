@@ -1,5 +1,5 @@
 import json
-from sqlalchemy import Text
+from sqlalchemy import Text, text
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
@@ -33,6 +33,19 @@ class Base(DeclarativeBase):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Idempotent migration: add role/status columns to existing users table.
+        # server_default='active' so pre-existing rows are active, not pending.
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'employee'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active'"
+        ))
+        # Ensure the designated admin has admin role and is always active.
+        from backend.models.user import ADMIN_EMAIL
+        await conn.execute(text(
+            "UPDATE users SET role = 'admin', status = 'active' WHERE email = :email"
+        ), {"email": ADMIN_EMAIL})
 
 
 async def get_db() -> AsyncSession:
