@@ -45,7 +45,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const STATS = (matches: any[], applications: any[], avgScore: string | null) => [
   { label: "Total Matches",  value: matches.length,                         icon: "🎯", color: "indigo"  },
-  { label: "Strong Matches", value: matches.filter(m => m.score >= 75).length, icon: "⚡", color: "emerald" },
+  { label: "Strong Matches", value: matches.filter(m => m.score >= 90).length, icon: "⚡", color: "emerald" },
   { label: "Jobs Applied",   value: applications.length,                    icon: "✅", color: "purple"  },
   { label: "Avg Score",      value: avgScore ? `${avgScore}%` : "—",        icon: "📊", color: "cyan"    },
 ];
@@ -173,15 +173,17 @@ export default function Dashboard() {
   };
   const handleLogout = () => { clearToken(); router.push("/login"); };
 
-  async function handleApply(matchId: string) {
+  async function handleApply(matchId: string, sourceUrl?: string) {
     const token = getToken()!;
     setApplying(matchId); setApplyMsg("");
+    // Open the actual job application page first
+    if (sourceUrl) window.open(sourceUrl, "_blank", "noopener,noreferrer");
     try {
       await applyMatch(token, matchId);
       setMatches(prev => prev.map(m =>
         m.match_id === matchId ? { ...m, status: "applied", applied_at: new Date().toISOString() } : m
       ));
-      setApplyMsg("Marked as applied.");
+      setApplyMsg(sourceUrl ? "Job page opened — complete your application there. Marked as applied." : "Marked as applied.");
     } catch (err: any) {
       setApplyMsg(err.message || "Failed to apply.");
     } finally {
@@ -193,12 +195,15 @@ export default function Dashboard() {
     const token = getToken()!;
     setApplyingAll(true); setApplyMsg("");
     try {
-      const { applied } = await applyAllMatches(token, 50);
+      // Open top 5 job URLs before the async call (must be synchronous to avoid popup block)
+      const topPending = matches.filter(m => m.status === "pending" && m.score >= 90).slice(0, 5);
+      topPending.forEach(m => { if (m.job?.source_url) window.open(m.job.source_url, "_blank", "noopener,noreferrer"); });
+      const { applied } = await applyAllMatches(token, 90);
       const now = new Date().toISOString();
       setMatches(prev => prev.map(m =>
-        m.status === "pending" ? { ...m, status: "applied", applied_at: now } : m
+        m.status === "pending" && m.score >= 90 ? { ...m, status: "applied", applied_at: now } : m
       ));
-      setApplyMsg(`Applied to ${applied} job${applied !== 1 ? "s" : ""}.`);
+      setApplyMsg(`Opened ${topPending.length} job page${topPending.length !== 1 ? "s" : ""} — complete the applications there. ${applied} match${applied !== 1 ? "es" : ""} marked applied.`);
     } catch (err: any) {
       setApplyMsg(err.message || "Failed to apply all.");
     } finally {
@@ -497,11 +502,11 @@ export default function Dashboard() {
                       )}
                       {m.status === "pending" ? (
                         <button
-                          onClick={() => handleApply(m.match_id)}
+                          onClick={() => handleApply(m.match_id, m.job?.source_url)}
                           disabled={applying === m.match_id}
                           className="text-xs font-semibold px-3 py-1 rounded-lg bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30 hover:bg-green-500/25 transition disabled:opacity-50"
                         >
-                          {applying === m.match_id ? "…" : "Apply"}
+                          {applying === m.match_id ? "…" : "Apply →"}
                         </button>
                       ) : (
                         <span className="text-xs text-[var(--text-muted)]">Applied ✓</span>

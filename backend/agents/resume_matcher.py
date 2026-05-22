@@ -28,7 +28,8 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def _score_to_percent(sim: float) -> float:
-    return round((sim + 1) / 2 * 100, 2)
+    # Direct cosine similarity → percentage; clamp to [0, 100]
+    return round(max(0.0, min(sim, 1.0)) * 100, 2)
 
 
 @celery_app.task(name="backend.agents.resume_matcher.run_matching", bind=True, max_retries=3)
@@ -42,7 +43,7 @@ def run_matching(self, user_id: str, resume_id: str):
         jobs = db.execute(select(Job).where(Job.embedding.isnot(None))).scalars().all()
         total = len(jobs)
         matched = 0
-        strong = 0  # score >= 75
+        strong = 0  # score >= 90
 
         self.update_state(state="PROGRESS", meta={
             "scanned": 0, "total": total, "matched": 0, "strong": 0,
@@ -61,6 +62,9 @@ def run_matching(self, user_id: str, resume_id: str):
                 ))
             ).scalar_one_or_none()
 
+            if score < 50:
+                continue  # skip irrelevant matches
+
             if existing:
                 existing.score = score
             else:
@@ -72,7 +76,7 @@ def run_matching(self, user_id: str, resume_id: str):
                 ))
                 matched += 1
 
-            if score >= 75:
+            if score >= 90:
                 strong += 1
 
             # Report progress every 25 jobs

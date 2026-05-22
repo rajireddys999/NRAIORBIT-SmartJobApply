@@ -76,7 +76,7 @@ async def apply_match(
 
 @router.post("/apply-all")
 async def apply_all_matches(
-    min_score: float = Query(50.0, ge=0, le=100),
+    min_score: float = Query(90.0, ge=0, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
