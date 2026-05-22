@@ -67,7 +67,7 @@ export async function deleteResume(token: string, resumeId: string) {
 export async function resumeTaskStatus(token: string, taskId: string) {
   const res = await fetch(`${BASE}/api/resumes/task/${taskId}`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error("Failed to poll task");
-  return res.json() as Promise<{ task_id: string; state: string; result?: any; error?: string }>;
+  return res.json() as Promise<{ task_id: string; state: string; result?: any; error?: string; meta?: { scanned: number; total: number; matched: number; strong: number; status: string } }>;
 }
 
 // ── Jobs ──────────────────────────────────────────────────────────────────────
