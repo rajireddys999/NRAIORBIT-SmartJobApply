@@ -5,7 +5,7 @@ from typing import Optional
 from sqlalchemy import String, DateTime, Text, func, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.models.database import Base
+from backend.models.database import Base, JsonList
 
 
 class Job(Base):
@@ -18,5 +18,5 @@ class Job(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     source_url: Mapped[str] = mapped_column(String(1024), unique=True, nullable=False)
     source: Mapped[str] = mapped_column(String(64))
-    embedding: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # stored as JSON; cast to list at runtime
+    embedding: Mapped[Optional[list]] = mapped_column(JsonList, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
