@@ -22,9 +22,15 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
-        "fetch-jobs-every-30min": {
-            "task": "backend.agents.job_fetcher.fetch_all_jobs",
+        # The Muse, Arbeitnow, RemoteOK, Greenhouse — every 30 min
+        "fetch-core-jobs-every-30min": {
+            "task": "backend.agents.job_fetcher.fetch_core_jobs",
             "schedule": crontab(minute="*/30"),
+        },
+        # LinkedIn guest API — once daily at 6 AM UTC to stay within ToS limits
+        "fetch-linkedin-jobs-daily": {
+            "task": "backend.agents.job_fetcher.fetch_linkedin_jobs",
+            "schedule": crontab(hour=6, minute=0),
         },
     },
 )

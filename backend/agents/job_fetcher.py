@@ -274,7 +274,25 @@ async def _fetch_linkedin(client: httpx.AsyncClient) -> list[dict]:
 # Orchestration
 # ---------------------------------------------------------------------------
 
+async def _fetch_core() -> list[dict]:
+    """The Muse + Arbeitnow + RemoteOK + Greenhouse — runs every 30 min."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        gathered = await asyncio.gather(
+            _fetch_themuse(client),
+            _fetch_arbeitnow(client),
+            _fetch_remoteok(client),
+            _fetch_greenhouse(client),
+            return_exceptions=True,
+        )
+    jobs: list[dict] = []
+    for result in gathered:
+        if isinstance(result, list):
+            jobs.extend(result)
+    return [j for j in jobs if j.get("url") and j.get("title")]
+
+
 async def _fetch_all() -> list[dict]:
+    """All 5 sources — used only for manual admin refresh."""
     async with httpx.AsyncClient(timeout=30) as client:
         gathered = await asyncio.gather(
             _fetch_themuse(client),
@@ -333,13 +351,46 @@ async def _embed_and_store(jobs_data: list[dict], db: Session) -> int:
     return len(new_jobs)
 
 
+@celery_app.task(name="backend.agents.job_fetcher.fetch_core_jobs", bind=True, max_retries=3)
+def fetch_core_jobs(self):
+    """Runs every 30 min — The Muse, Arbeitnow, RemoteOK, Greenhouse."""
+    db = _get_sync_session()
+    try:
+        jobs_data = asyncio.run(_fetch_core())
+        saved = asyncio.run(_embed_and_store(jobs_data, db))
+        return {"fetched": len(jobs_data), "saved": saved, "source": "core"}
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60)
+    finally:
+        db.close()
+
+
+@celery_app.task(name="backend.agents.job_fetcher.fetch_linkedin_jobs", bind=True, max_retries=2)
+def fetch_linkedin_jobs(self):
+    """Runs once daily at 6 AM UTC — LinkedIn guest API only."""
+    db = _get_sync_session()
+    try:
+        async def _run():
+            async with httpx.AsyncClient(timeout=30) as client:
+                return await _fetch_linkedin(client)
+        jobs_data = asyncio.run(_run())
+        jobs_data = [j for j in jobs_data if j.get("url") and j.get("title")]
+        saved = asyncio.run(_embed_and_store(jobs_data, db))
+        return {"fetched": len(jobs_data), "saved": saved, "source": "linkedin"}
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=300)
+    finally:
+        db.close()
+
+
 @celery_app.task(name="backend.agents.job_fetcher.fetch_all_jobs", bind=True, max_retries=3)
 def fetch_all_jobs(self):
+    """Manual refresh — all 5 sources including LinkedIn."""
     db = _get_sync_session()
     try:
         jobs_data = asyncio.run(_fetch_all())
         saved = asyncio.run(_embed_and_store(jobs_data, db))
-        return {"fetched": len(jobs_data), "saved": saved}
+        return {"fetched": len(jobs_data), "saved": saved, "source": "all"}
     except Exception as exc:
         raise self.retry(exc=exc, countdown=60)
     finally:
