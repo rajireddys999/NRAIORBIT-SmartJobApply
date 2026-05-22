@@ -108,6 +108,12 @@ export async function getMatches(token: string, minScore = 0) {
   return res.json();
 }
 
+export async function diagnoseMatches(token: string) {
+  const res = await fetch(`${BASE}/api/matches/diagnose`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("Diagnostic failed");
+  return res.json();
+}
+
 export async function resetMatches(token: string) {
   const res = await fetch(`${BASE}/api/matches/reset`, {
     method: "DELETE",

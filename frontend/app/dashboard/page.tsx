@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getToken, getRole, clearToken } from "@/lib/auth";
-import { getMatches, getApplications, uploadResume, applyMatch, applyAllMatches, getResumes, deleteResume, resumeTaskStatus, retryMatching, getProfile, saveProfile, autoApply, resetMatches, CandidateProfile } from "@/lib/api";
+import { getMatches, getApplications, uploadResume, applyMatch, applyAllMatches, getResumes, deleteResume, resumeTaskStatus, retryMatching, getProfile, saveProfile, autoApply, resetMatches, diagnoseMatches, CandidateProfile } from "@/lib/api";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -77,6 +77,8 @@ export default function Dashboard() {
   const [profileMsg, setProfileMsg]     = useState("");
   const [profileDraft, setProfileDraft] = useState<Partial<CandidateProfile>>({});
   const [autoApplying, setAutoApplying] = useState<string | null>(null);
+  const [diagnosing, setDiagnosing]     = useState(false);
+  const [diagReport, setDiagReport]     = useState<any>(null);
   const [matching, setMatching]         = useState(false);
   const [matchProgress, setMatchProgress] = useState<{ scanned: number; total: number; matched: number; strong: number; status: string } | null>(null);
   const [loadError, setLoadError]       = useState("");
@@ -158,6 +160,19 @@ export default function Dashboard() {
       setUploadMsg(`Cleared ${deleted} matches. Click Retry Match on your resume to re-run.`);
     } catch (err: any) {
       alert(err.message || "Failed to reset matches.");
+    }
+  }
+
+  async function handleDiagnose() {
+    const token = getToken()!;
+    setDiagnosing(true); setDiagReport(null);
+    try {
+      const report = await diagnoseMatches(token);
+      setDiagReport(report);
+    } catch (err: any) {
+      setDiagReport({ error: "failed", message: err.message });
+    } finally {
+      setDiagnosing(false);
     }
   }
 
@@ -613,7 +628,14 @@ export default function Dashboard() {
                 <p className="text-sm text-[var(--text-muted)]">
                   <span className="font-semibold text-[var(--text)]">{matches.filter(m => m.status === "pending").length}</span> pending match{matches.filter(m => m.status === "pending").length !== 1 ? "es" : ""} — review and apply below
                 </p>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={handleDiagnose}
+                    disabled={diagnosing}
+                    className="px-4 py-1.5 rounded-xl text-sm font-semibold border text-violet-500 border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 transition disabled:opacity-50"
+                  >
+                    {diagnosing ? "Analysing…" : "🔍 Why 0 matches?"}
+                  </button>
                   <button
                     onClick={handleResetMatches}
                     className="px-4 py-1.5 rounded-xl text-sm font-semibold border text-red-500 border-red-500/30 bg-red-500/10 hover:bg-red-500/20 transition"
@@ -635,12 +657,89 @@ export default function Dashboard() {
                 {applyMsg}
               </div>
             )}
+            {/* Diagnostic report */}
+            {diagReport && (
+              <div className="rounded-2xl border px-5 py-4 text-sm space-y-3"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-base">🔍 Match Diagnostic Report</p>
+                  <button onClick={() => setDiagReport(null)} className="text-[var(--text-muted)] text-xs hover:text-[var(--text)]">✕ Close</button>
+                </div>
+
+                {diagReport.error ? (
+                  <p className="text-red-500">{diagReport.message}</p>
+                ) : (
+                  <>
+                    {/* Verdict banner */}
+                    <div className={`rounded-xl px-4 py-2.5 font-medium ${
+                      diagReport.verdict === "OK" ? "bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/25" :
+                      diagReport.verdict === "THRESHOLD_TOO_HIGH" ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/25" :
+                      "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/25"
+                    }`}>
+                      <strong>{diagReport.verdict?.replace(/_/g, " ")}</strong>
+                      {diagReport.fix && <p className="font-normal text-xs mt-1 opacity-80">{diagReport.fix}</p>}
+                    </div>
+
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {[
+                        { label: "Resume embedded", value: diagReport.resume?.has_embedding ? `✅ ${diagReport.resume.embedding_dim}d` : "❌ No" },
+                        { label: "Jobs with embeddings", value: `${diagReport.jobs?.with_embedding ?? 0} / ${diagReport.jobs?.total ?? 0}` },
+                        { label: "Jobs sampled", value: diagReport.score_distribution?.jobs_sampled ?? 0 },
+                        { label: "Best raw score", value: `${diagReport.score_distribution?.max_score ?? 0}%` },
+                        { label: "Avg raw score", value: `${diagReport.score_distribution?.avg_score ?? 0}%` },
+                        { label: "≥75% (would save)", value: diagReport.score_distribution?.above_75pct ?? 0 },
+                        { label: "≥65%", value: diagReport.score_distribution?.above_65pct ?? 0 },
+                        { label: "≥50%", value: diagReport.score_distribution?.above_50pct ?? 0 },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="rounded-xl border px-3 py-2" style={{ borderColor: "var(--border)" }}>
+                          <p className="text-xs text-[var(--text-muted)]">{label}</p>
+                          <p className="font-bold text-sm mt-0.5">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Top 10 raw matches */}
+                    {diagReport.top_10_raw?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-2">Top 10 Raw Scores (before threshold)</p>
+                        <div className="space-y-1.5">
+                          {diagReport.top_10_raw.map((m: any, i: number) => (
+                            <div key={i} className="flex items-center gap-3">
+                              <span className={`text-xs font-black w-12 shrink-0 ${m.score >= 75 ? "text-green-500" : m.score >= 60 ? "text-amber-500" : "text-slate-400"}`}>
+                                {m.score}%
+                              </span>
+                              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+                                <div className={`h-full rounded-full ${m.score >= 75 ? "bg-green-500" : m.score >= 60 ? "bg-amber-400" : "bg-slate-400"}`}
+                                  style={{ width: `${m.score}%` }} />
+                              </div>
+                              <span className="text-xs truncate max-w-[180px]">{m.title} — {m.company}</span>
+                              {m.would_be_saved
+                                ? <span className="text-xs text-green-500 shrink-0">✓ saved</span>
+                                : <span className="text-xs text-slate-400 shrink-0">filtered</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             {matches.length === 0 ? (
-              <div className="rounded-2xl border p-16 text-center"
+              <div className="rounded-2xl border p-12 text-center"
                 style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
                 <div className="text-5xl mb-4">📄</div>
                 <p className="font-semibold text-lg mb-1">No matches yet</p>
-                <p className="text-[var(--text-muted)] text-sm">Upload your resume above — AI starts matching within seconds.</p>
+                <p className="text-[var(--text-muted)] text-sm mb-4">Upload your resume above — AI starts matching within seconds.</p>
+                <button
+                  onClick={handleDiagnose}
+                  disabled={diagnosing}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold border text-violet-500 border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 transition disabled:opacity-50"
+                >
+                  {diagnosing ? "Analysing…" : "🔍 Diagnose why matches are 0"}
+                </button>
               </div>
             ) : matches.map(m => (
               <div key={m.match_id}

@@ -6,6 +6,7 @@ import logging
 
 from backend.api.routes import auth, resumes, jobs, matches, applications, admin, profile
 from backend.api.routes.autoapply import router as autoapply_router
+from backend.api.routes.diagnose import router as diagnose_router
 from backend.models.database import init_db
 from backend.config import settings
 
@@ -80,6 +81,7 @@ app.include_router(applications.router, prefix="/api/applications", tags=["appli
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
 app.include_router(autoapply_router, prefix="/api", tags=["auto-apply"])
+app.include_router(diagnose_router, prefix="/api/matches", tags=["diagnose"])
 
 
 @app.get("/health")
