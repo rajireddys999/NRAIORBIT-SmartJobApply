@@ -93,13 +93,13 @@ export default function Dashboard() {
       getMatches(token, 75).catch((e) => { setLoadError(e.message || "Failed to load matches"); return []; }),
       getApplications(token).catch(() => []),
       getResumes(token).catch(() => []),
-      getProfile(token).catch(() => null),
+      isAdmin ? Promise.resolve(null) : getProfile(token).catch(() => null),
     ]).then(([m, a, r, p]) => {
       setMatches(m);
       setApplications(a);
       setResumes(r);
       if (p) { setProfile(p); setProfileDraft(p); }
-      else setProfileOpen(true); // auto-open if no profile yet
+      else if (!isAdmin) setProfileOpen(true); // auto-open if no profile yet (employees only)
     }).finally(() => setLoadingData(false));
   }, [router]);
 
@@ -458,8 +458,8 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Candidate Profile */}
-        <div className="rounded-2xl border mb-8" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
+        {/* Candidate Profile — employees only */}
+        {!isAdmin && <div className="rounded-2xl border mb-8" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
           <button
             className="w-full flex items-center justify-between px-6 py-4 text-left"
             onClick={() => setProfileOpen(o => !o)}
@@ -580,7 +580,7 @@ export default function Dashboard() {
               </div>
             </form>
           )}
-        </div>
+        </div>}
 
         {/* Error banner */}
         {loadError && (
