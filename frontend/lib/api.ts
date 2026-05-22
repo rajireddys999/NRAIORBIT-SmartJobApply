@@ -46,7 +46,28 @@ export async function uploadResume(token: string, file: File) {
     body: form,
   });
   if (!res.ok) throw new Error(await extractError(res, "Upload failed"));
+  return res.json() as Promise<{ id: string; filename: string; task_id: string; uploaded_at: string }>;
+}
+
+export async function getResumes(token: string) {
+  const res = await fetch(`${BASE}/api/resumes/`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("Failed to fetch resumes");
+  return res.json() as Promise<{ id: string; filename: string; download_url: string; uploaded_at: string; has_embedding: boolean }[]>;
+}
+
+export async function deleteResume(token: string, resumeId: string) {
+  const res = await fetch(`${BASE}/api/resumes/${resumeId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(await extractError(res, "Failed to delete"));
   return res.json();
+}
+
+export async function resumeTaskStatus(token: string, taskId: string) {
+  const res = await fetch(`${BASE}/api/resumes/task/${taskId}`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("Failed to poll task");
+  return res.json() as Promise<{ task_id: string; state: string; result?: any; error?: string }>;
 }
 
 // ── Jobs ──────────────────────────────────────────────────────────────────────

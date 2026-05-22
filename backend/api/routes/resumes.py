@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _filename_from_url(s3_url: str) -> str:
+    return s3_url.rsplit("/", 1)[-1] if "/" in s3_url else "resume.pdf"
+
+
 @router.post("/upload")
 async def upload(
     file: UploadFile = File(...),
@@ -27,7 +31,6 @@ async def upload(
 
     raw = await file.read()
 
-    # Supabase storage is optional — matching still works without it
     filename = file.filename or "resume.pdf"
     try:
         s3_url = upload_resume(raw, filename, str(current_user.id))
@@ -48,11 +51,35 @@ async def upload(
     await db.commit()
     await db.refresh(resume)
 
-    # Trigger async matching in background
     from backend.celery_app import celery_app
-    celery_app.send_task("backend.agents.resume_matcher.run_matching", args=[str(current_user.id), str(resume.id)])
+    task = celery_app.send_task(
+        "backend.agents.resume_matcher.run_matching",
+        args=[str(current_user.id), str(resume.id)],
+    )
 
-    return {"id": str(resume.id), "s3_url": resume.s3_url, "uploaded_at": resume.uploaded_at}
+    return {
+        "id": str(resume.id),
+        "filename": filename,
+        "task_id": task.id,
+        "uploaded_at": resume.uploaded_at,
+    }
+
+
+@router.get("/task/{task_id}")
+async def match_task_status(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Poll Celery matching task state — accessible to any authenticated user."""
+    from backend.celery_app import celery_app
+    result = celery_app.AsyncResult(task_id)
+    state = result.state
+    payload: dict = {"task_id": task_id, "state": state}
+    if state == "SUCCESS":
+        payload["result"] = result.result
+    elif state == "FAILURE":
+        payload["error"] = str(result.result)
+    return payload
 
 
 @router.get("/")
@@ -60,14 +87,39 @@ async def list_resumes(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Resume).where(Resume.user_id == current_user.id).order_by(Resume.uploaded_at.desc()))
+    result = await db.execute(
+        select(Resume)
+        .where(Resume.user_id == current_user.id)
+        .order_by(Resume.uploaded_at.desc())
+    )
     resumes = result.scalars().all()
     return [
         {
             "id": str(r.id),
+            "filename": _filename_from_url(r.s3_url),
             "download_url": get_presigned_url(r.s3_url),
             "uploaded_at": r.uploaded_at,
             "has_embedding": r.embedding is not None,
         }
         for r in resumes
     ]
+
+
+@router.delete("/{resume_id}")
+async def delete_resume(
+    resume_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Resume).where(
+            Resume.id == uuid.UUID(resume_id),
+            Resume.user_id == current_user.id,
+        )
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    await db.delete(resume)
+    await db.commit()
+    return {"deleted": resume_id}
