@@ -1,14 +1,11 @@
 """
-Resume Matcher Agent — triggered when a new resume is uploaded or new jobs arrive.
+Resume Matcher Agent — triggered when a new resume is uploaded.
 Computes cosine similarity between resume embedding and all job embeddings.
-Stores match scores in the matches table.
+Reports live progress via Celery task state so the frontend can poll it.
 """
-import asyncio
 import uuid
 import numpy as np
-from celery import shared_task
 from sqlalchemy import select, and_
-from sqlalchemy.orm import Session
 
 from backend.celery_app import celery_app
 from backend.config import settings
@@ -27,9 +24,7 @@ def _get_sync_session():
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     a, b = np.array(a), np.array(b)
     denom = np.linalg.norm(a) * np.linalg.norm(b)
-    if denom == 0:
-        return 0.0
-    return float(np.dot(a, b) / denom)
+    return float(np.dot(a, b) / denom) if denom else 0.0
 
 
 def _score_to_percent(sim: float) -> float:
@@ -45,9 +40,18 @@ def run_matching(self, user_id: str, resume_id: str):
             return {"error": "Resume not found or missing embedding"}
 
         jobs = db.execute(select(Job).where(Job.embedding.isnot(None))).scalars().all()
+        total = len(jobs)
         matched = 0
+        strong = 0  # score >= 75
 
-        for job in jobs:
+        self.update_state(state="PROGRESS", meta={
+            "scanned": 0, "total": total, "matched": 0, "strong": 0,
+            "status": f"Starting — scanning {total} jobs…",
+        })
+
+        for i, job in enumerate(jobs):
+            score = _score_to_percent(_cosine_similarity(resume.embedding, job.embedding))
+
             existing = db.execute(
                 select(Match).where(and_(
                     Match.user_id == uuid.UUID(user_id),
@@ -55,22 +59,33 @@ def run_matching(self, user_id: str, resume_id: str):
                 ))
             ).scalar_one_or_none()
 
-            score = _score_to_percent(_cosine_similarity(resume.embedding, job.embedding))
-
             if existing:
                 existing.score = score
             else:
-                match = Match(
+                db.add(Match(
                     user_id=uuid.UUID(user_id),
                     job_id=job.id,
                     score=score,
                     status=MatchStatus.pending,
-                )
-                db.add(match)
+                ))
                 matched += 1
 
+            if score >= 75:
+                strong += 1
+
+            # Report progress every 25 jobs
+            if (i + 1) % 25 == 0 or i == total - 1:
+                db.flush()
+                self.update_state(state="PROGRESS", meta={
+                    "scanned": i + 1,
+                    "total": total,
+                    "matched": matched,
+                    "strong": strong,
+                    "status": f"Scanned {i + 1}/{total} jobs — {strong} strong matches so far",
+                })
+
         db.commit()
-        return {"matched": matched, "total_jobs": len(jobs)}
+        return {"matched": matched, "total_jobs": total, "strong": strong}
     except Exception as exc:
         raise self.retry(exc=exc, countdown=30)
     finally:
