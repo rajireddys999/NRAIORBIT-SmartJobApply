@@ -97,14 +97,23 @@ INDEED_EXPERIENCED_QUERIES = [
     "software engineer",
 ]
 
-# US metros for LinkedIn location-based search + The Muse location filter
-SEARCH_LOCATIONS = [
+# Target locations — USA metros + India cities + Remote
+US_LOCATIONS = [
     "Charlotte, NC",
     "Dallas, TX",
     "Austin, TX",
     "Atlanta, GA",
-    "Remote",
+    "New York, NY",
+    "San Francisco, CA",
 ]
+INDIA_LOCATIONS = [
+    "Bangalore, Karnataka, India",
+    "Hyderabad, Telangana, India",
+    "Mumbai, Maharashtra, India",
+    "Chennai, Tamil Nadu, India",
+    "Pune, Maharashtra, India",
+]
+SEARCH_LOCATIONS = US_LOCATIONS + INDIA_LOCATIONS + ["Remote"]
 
 # LinkedIn keywords — mix of fresher and experienced queries
 LINKEDIN_KEYWORDS = [
@@ -113,7 +122,35 @@ LINKEDIN_KEYWORDS = [
     "junior software engineer",
     "backend engineer",
     "data scientist",
+    "data engineer",
 ]
+
+# Location strings that indicate a job is NOT in USA or India (for post-fetch filtering)
+_BLOCKED_COUNTRIES = {
+    "uk", "united kingdom", "germany", "france", "netherlands", "canada",
+    "australia", "singapore", "brazil", "mexico", "spain", "italy",
+    "poland", "sweden", "norway", "denmark", "finland", "austria",
+    "switzerland", "belgium", "portugal", "ukraine", "czech", "ireland",
+}
+
+
+def _is_usa_or_india(location: str) -> bool:
+    """Return True if job is in USA, India, or Remote — filter out other countries."""
+    if not location:
+        return True  # no location = keep
+    loc = location.lower()
+    if any(w in loc for w in ("remote", "worldwide", "anywhere", "global")):
+        return True
+    if any(w in loc for w in ("india", ", in", "bangalore", "hyderabad", "mumbai", "chennai",
+                               "pune", "delhi", "kolkata", "noida", "gurugram", "gurgaon")):
+        return True
+    if any(w in loc for w in (", us", "usa", "united states", ", ny", ", ca", ", tx",
+                               ", nc", ", ga", ", wa", ", il", ", fl", ", ma", ", va")):
+        return True
+    # If the location explicitly names a blocked country, exclude
+    if any(w in loc for w in _BLOCKED_COUNTRIES):
+        return False
+    return True  # unknown location — keep
 
 
 def _get_sync_session():
@@ -438,10 +475,13 @@ async def _fetch_linkedin(client: httpx.AsyncClient) -> list[dict]:
         ),
         "Accept-Language": "en-US,en;q=0.9",
     }
-    us_cities = [loc for loc in SEARCH_LOCATIONS if loc != "Remote"][:3]
+    # Search top 3 US cities + top 2 India cities
+    us_cities = US_LOCATIONS[:3]
+    india_cities = INDIA_LOCATIONS[:2]
+    search_cities = us_cities + india_cities
     keywords = LINKEDIN_KEYWORDS[:3]
 
-    for location in us_cities:
+    for location in search_cities:
         for keyword in keywords:
             try:
                 resp = await client.get(
@@ -494,12 +534,12 @@ async def _fetch_linkedin(client: httpx.AsyncClient) -> list[dict]:
 # Orchestration
 # ---------------------------------------------------------------------------
 
-async def _fetch_core() -> list[dict]:
-    """Core sources — runs every 30 min.
+def _filter_locations(jobs: list[dict]) -> list[dict]:
+    return [j for j in jobs if j.get("url") and j.get("title") and _is_usa_or_india(j.get("location", ""))]
 
-    Includes: The Muse, Arbeitnow, RemoteOK, Greenhouse, Lever, Ashby, Indeed.
-    LinkedIn excluded — pulled once daily or via manual refresh only.
-    """
+
+async def _fetch_core() -> list[dict]:
+    """Core sources — runs every 30 min. USA + India locations only."""
     async with httpx.AsyncClient(timeout=30) as client:
         gathered = await asyncio.gather(
             _fetch_themuse(client),
@@ -515,11 +555,11 @@ async def _fetch_core() -> list[dict]:
     for result in gathered:
         if isinstance(result, list):
             jobs.extend(result)
-    return [j for j in jobs if j.get("url") and j.get("title")]
+    return _filter_locations(jobs)
 
 
 async def _fetch_all() -> list[dict]:
-    """All sources including LinkedIn — used only for manual admin refresh."""
+    """All sources including LinkedIn — used for manual admin refresh. USA + India only."""
     async with httpx.AsyncClient(timeout=30) as client:
         gathered = await asyncio.gather(
             _fetch_themuse(client),
@@ -536,7 +576,7 @@ async def _fetch_all() -> list[dict]:
     for result in gathered:
         if isinstance(result, list):
             jobs.extend(result)
-    return [j for j in jobs if j.get("url") and j.get("title")]
+    return _filter_locations(jobs)
 
 
 async def _embed_and_store(jobs_data: list[dict], db: Session) -> int:
