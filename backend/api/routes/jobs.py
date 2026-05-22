@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 
 from backend.models.database import get_db
 from backend.models.job import Job
@@ -34,6 +34,14 @@ async def list_jobs(
         }
         for j in jobs
     ]
+
+
+@router.post("/refresh")
+async def refresh_jobs(current_user: User = Depends(get_current_user)):
+    """Manually trigger the job fetcher task (normally runs every 30 min)."""
+    from backend.celery_app import celery_app
+    task = celery_app.send_task("backend.agents.job_fetcher.fetch_all_jobs")
+    return {"queued": True, "task_id": task.id}
 
 
 @router.get("/{job_id}")
