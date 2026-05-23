@@ -1,16 +1,16 @@
 """
-Multi-Signal Resume Matcher.
+Multi-Signal Resume Matcher — additive bonus scoring.
 
-Three signals combined into a 0-100 composite score:
-  1. Semantic (50%) — MiniLM cosine similarity remapped from realistic range [0.25, 0.80] → [0, 100]
-  2. Skill overlap (35%) — tech skill lexicon intersection (job coverage 65% + resume recall 35%)
-  3. Title relevance (15%) — job title keyword presence in resume text
+Score = cosine_sim×100  (base, 0-100)
+      + skill_bonus      (0-30, based on job skill coverage in resume)
+      + title_bonus      (0-20, based on job title words in resume)
+      capped at 100.
 
-Short/LinkedIn job descriptions are enriched with role-typical skills before scoring
-so that "Data Scientist at Google. Search keywords: data scientist." still matches a
-data science resume correctly.
+This ensures that a data-engineering resume vs a Data Engineer job scores ~70-90%
+even when the job description embedding is weak (short LinkedIn 2-sentence format),
+because the skill and title bonuses are computed on the ENRICHED description.
 
-Score interpretation: 50+ = saved, 70+ = strong, 82+ = excellent.
+Thresholds: 55+ = saved, 72+ = strong, 85+ = excellent.
 """
 import uuid
 import numpy as np
@@ -22,17 +22,14 @@ from backend.models.resume import Resume
 from backend.models.job import Job
 from backend.models.match import Match, MatchStatus
 
-# ── Scoring constants ─────────────────────────────────────────────────────────
-_SEM_MIN = 0.25
-_SEM_MAX = 0.80
+# ── Scoring thresholds ────────────────────────────────────────────────────────
+SAVE_THRESHOLD      = 55.0
+STRONG_THRESHOLD    = 72.0
+EXCELLENT_THRESHOLD = 85.0
 
-_W_SEMANTIC = 0.50
-_W_SKILLS   = 0.35
-_W_TITLE    = 0.15
-
-SAVE_THRESHOLD      = 50.0
-STRONG_THRESHOLD    = 70.0
-EXCELLENT_THRESHOLD = 82.0
+# Max bonus points added on top of raw cosine-sim score
+_SKILL_BONUS_MAX = 30.0   # awarded when resume covers 100% of job's detected skills
+_TITLE_BONUS_MAX = 20.0   # awarded when all job-title words appear in resume
 
 # ── Role → typical skills map ─────────────────────────────────────────────────
 # Used to enrich short job descriptions (e.g. LinkedIn 2-sentence format) so
@@ -237,44 +234,6 @@ def extract_skills(text: str) -> set[str]:
     return {skill for skill in _TECH_SKILLS if skill in t}
 
 
-def _skill_score(resume_text: str | None, job_text_enriched: str, semantic_pct: float) -> float:
-    """Skill overlap score 0-100 using the enriched job description."""
-    if not resume_text:
-        return semantic_pct * 0.6
-
-    r_skills = extract_skills(resume_text)
-    j_skills = extract_skills(job_text_enriched)
-
-    if not j_skills and not r_skills:
-        return semantic_pct * 0.6
-
-    # Job coverage: fraction of job-required skills the resume has
-    job_coverage = len(r_skills & j_skills) / len(j_skills) if j_skills else 0.0
-    # Resume recall: fraction of resume skills that overlap
-    resume_recall = len(r_skills & j_skills) / len(r_skills) if r_skills else 0.0
-
-    return (job_coverage * 0.65 + resume_recall * 0.35) * 100
-
-
-def _title_score(job_title: str, resume_text: str | None) -> float:
-    """Title relevance 0-1. Exact phrase check then word overlap."""
-    if not job_title or not resume_text:
-        return 0.5
-
-    jt = job_title.lower()
-    rt = resume_text.lower()
-
-    if jt in rt:
-        return 1.0
-
-    jt_words = set(jt.split()) - _STOPWORDS
-    rt_words = set(rt.split())
-    if not jt_words:
-        return 0.5
-
-    return min(len(jt_words & rt_words) / len(jt_words), 1.0)
-
-
 def composite_score(
     sim: float,
     resume_text: str | None,
@@ -282,17 +241,45 @@ def composite_score(
     job_title: str,
 ) -> float:
     """
-    Multi-signal composite score 0-100.
-    Short job descriptions (e.g. LinkedIn) are enriched with role-typical skills.
+    Additive composite score = cosine_sim×100 + skill_bonus + title_bonus, capped at 100.
+
+    Using additive bonuses (not multiplicative weights) means weak embeddings from
+    short job descriptions don't crater the score — the skill/title signals can
+    independently push a good match above the save threshold.
+
+    Example — data engineering resume vs "Data Engineer" LinkedIn job (sim≈0.40):
+      base=40  +  skill_bonus=24 (80% job coverage × 30)  +  title_bonus=20  =  84 ✓
     """
     rich_desc = enrich_description(job_title, job_desc)
 
-    semantic = max(0.0, min((sim - _SEM_MIN) / (_SEM_MAX - _SEM_MIN), 1.0)) * 100
-    skill    = _skill_score(resume_text, rich_desc, semantic)
-    title    = _title_score(job_title, resume_text) * 100
+    # Base: raw cosine similarity as percentage
+    base = round(sim * 100, 2)
 
-    final = _W_SEMANTIC * semantic + _W_SKILLS * skill + _W_TITLE * title
-    return round(min(final, 100.0), 2)
+    # Skill bonus: how much of the job's required skills does the resume have?
+    r_skills = extract_skills(resume_text or "")
+    j_skills = extract_skills(rich_desc)
+    if j_skills:
+        job_coverage = len(r_skills & j_skills) / len(j_skills)
+        skill_bonus = job_coverage * _SKILL_BONUS_MAX
+    elif r_skills:
+        skill_bonus = _SKILL_BONUS_MAX * 0.15  # resume has skills, job desc has none detected
+    else:
+        skill_bonus = 0.0
+
+    # Title bonus: do job-title words appear in the resume?
+    title_bonus = 0.0
+    if job_title and resume_text:
+        jt_words = set(job_title.lower().split()) - _STOPWORDS
+        rt_words = set(resume_text.lower().split())
+        if jt_words:
+            overlap = len(jt_words & rt_words) / len(jt_words)
+            if job_title.lower() in resume_text.lower():
+                title_bonus = _TITLE_BONUS_MAX  # exact phrase match → full bonus
+            else:
+                title_bonus = overlap * _TITLE_BONUS_MAX
+
+    total = base + skill_bonus + title_bonus
+    return round(min(total, 100.0), 2)
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────

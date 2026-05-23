@@ -16,9 +16,9 @@ from backend.agents.resume_matcher import composite_score, extract_skills, _cosi
 
 router = APIRouter()
 
-SAVE_THRESHOLD      = 50.0
-STRONG_THRESHOLD    = 70.0
-EXCELLENT_THRESHOLD = 82.0
+SAVE_THRESHOLD      = 55.0
+STRONG_THRESHOLD    = 72.0
+EXCELLENT_THRESHOLD = 85.0
 
 
 @router.get("/diagnose")

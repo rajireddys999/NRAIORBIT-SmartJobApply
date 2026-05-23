@@ -45,7 +45,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const STATS = (matches: any[], applications: any[], avgScore: string | null) => [
   { label: "Total Matches",  value: matches.length,                         icon: "🎯", color: "indigo"  },
-  { label: "Strong Matches", value: matches.filter(m => m.score >= 85).length, icon: "⚡", color: "emerald" },
+  { label: "Strong Matches", value: matches.filter(m => m.score >= 72).length, icon: "⚡", color: "emerald" },
   { label: "Jobs Applied",   value: applications.length,                    icon: "✅", color: "purple"  },
   { label: "Avg Score",      value: avgScore ? `${avgScore}%` : "—",        icon: "📊", color: "cyan"    },
 ];

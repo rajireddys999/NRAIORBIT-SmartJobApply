@@ -17,6 +17,7 @@ Sources:
     - LinkedIn      — location-based guest API
 """
 import asyncio
+import html as html_lib
 import re
 from datetime import datetime, timezone
 import httpx
@@ -141,32 +142,55 @@ def _linkedin_rich_description(title: str, company: str, location: str, keyword:
     return desc
 
 
-# Location strings that indicate a job is NOT in USA or India (for post-fetch filtering)
-_BLOCKED_COUNTRIES = {
-    "uk", "united kingdom", "germany", "france", "netherlands", "canada",
-    "australia", "singapore", "brazil", "mexico", "spain", "italy",
-    "poland", "sweden", "norway", "denmark", "finland", "austria",
-    "switzerland", "belgium", "portugal", "ukraine", "czech", "ireland",
-}
+def _clean(text: str | None) -> str:
+    """Decode HTML entities and strip extra whitespace."""
+    if not text:
+        return ""
+    return html_lib.unescape(text).strip()
+
+
+# Allowlist approach: a location must explicitly match USA or India patterns.
+# Anything unrecognised is EXCLUDED (not kept). Remote/worldwide is always kept.
+_INDIA_WORDS = (
+    "india", ", in,", " india,", "bangalore", "bengaluru", "hyderabad",
+    "mumbai", "chennai", "pune", "delhi", "noida", "gurugram", "gurgaon",
+    "kolkata", "ahmedabad", "jaipur", "kochi", "coimbatore", "nagpur",
+    "chandigarh", "indore", "bhopal", "visakhapatnam", "surat",
+)
+_USA_STATE_ABBR = (
+    ", al", ", ak", ", az", ", ar", ", ca", ", co", ", ct", ", de", ", fl",
+    ", ga", ", hi", ", id", ", il", ", in", ", ia", ", ks", ", ky", ", la",
+    ", me", ", md", ", ma", ", mi", ", mn", ", ms", ", mo", ", mt", ", ne",
+    ", nv", ", nh", ", nj", ", nm", ", ny", ", nc", ", nd", ", oh", ", ok",
+    ", or", ", pa", ", ri", ", sc", ", sd", ", tn", ", tx", ", ut", ", vt",
+    ", va", ", wa", ", wv", ", wi", ", wy", ", dc",
+)
+_USA_WORDS = (
+    "united states", " usa", "u.s.a", "u.s.",
+    "new york", "los angeles", "chicago", "houston", "phoenix", "philadelphia",
+    "san antonio", "san diego", "dallas", "san jose", "austin", "charlotte",
+    "san francisco", "seattle", "denver", "boston", "nashville", "atlanta",
+    "miami", "minneapolis", "raleigh", "portland", "sacramento", "detroit",
+    "memphis", "louisville", "baltimore", "milwaukee", "albuquerque", "tucson",
+    "fresno", "mesa", "omaha", "cleveland", "kansas city", "virginia beach",
+    "colorado springs", "long beach", "tampa", "pittsburgh",
+)
 
 
 def _is_usa_or_india(location: str) -> bool:
-    """Return True if job is in USA, India, or Remote — filter out other countries."""
+    """Allowlist filter: keep only USA, India, and Remote jobs."""
     if not location:
-        return True  # no location = keep
+        return True  # no location info — keep (likely remote)
     loc = location.lower()
-    if any(w in loc for w in ("remote", "worldwide", "anywhere", "global")):
+    if any(w in loc for w in ("remote", "worldwide", "anywhere", "global", "work from home")):
         return True
-    if any(w in loc for w in ("india", ", in", "bangalore", "hyderabad", "mumbai", "chennai",
-                               "pune", "delhi", "kolkata", "noida", "gurugram", "gurgaon")):
+    if any(w in loc for w in _INDIA_WORDS):
         return True
-    if any(w in loc for w in (", us", "usa", "united states", ", ny", ", ca", ", tx",
-                               ", nc", ", ga", ", wa", ", il", ", fl", ", ma", ", va")):
+    if any(w in loc for w in _USA_STATE_ABBR):
         return True
-    # If the location explicitly names a blocked country, exclude
-    if any(w in loc for w in _BLOCKED_COUNTRIES):
-        return False
-    return True  # unknown location — keep
+    if any(w in loc for w in _USA_WORDS):
+        return True
+    return False  # not recognised as USA or India — exclude
 
 
 def _get_sync_session():
@@ -686,15 +710,22 @@ async def _embed_and_store(jobs_data: list[dict], db: Session) -> int:
 
     for job_data, emb in zip(new_jobs, embeddings):
         stmt = pg_insert(Job).values(
-            title=job_data["title"],
-            company=job_data["company"],
-            location=job_data["location"],
-            description=job_data["description"],
+            title=_clean(job_data["title"]),
+            company=_clean(job_data["company"]),
+            location=_clean(job_data["location"]),
+            description=_clean(job_data["description"]),
             source_url=job_data["url"],
             source=job_data["source"],
             embedding=emb,
             posted_at=job_data.get("posted_at"),
-        ).on_conflict_do_nothing(index_elements=["source_url"])
+        ).on_conflict_do_update(
+            index_elements=["source_url"],
+            set_={
+                "posted_at": job_data.get("posted_at"),
+                "description": _clean(job_data["description"]),
+                "title": _clean(job_data["title"]),
+            },
+        )
         db.execute(stmt)
 
     db.commit()
