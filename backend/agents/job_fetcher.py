@@ -474,15 +474,60 @@ async def _fetch_greenhouse(client: httpx.AsyncClient) -> list[dict]:
     return results
 
 
-async def _fetch_linkedin(client: httpx.AsyncClient) -> list[dict]:
-    """LinkedIn Jobs Guest API — location-based, no auth required.
+def _extract_linkedin_job_id(url: str) -> str | None:
+    """Extract numeric job ID from a LinkedIn job URL."""
+    m = re.search(r"/jobs/view/(\d+)", url)
+    return m.group(1) if m else None
 
-    Searches US cities (Charlotte, Dallas, Austin, Atlanta) for both
-    fresher and experienced roles. Rate-limited to avoid IP blocking:
-    3 locations × 3 keywords = 9 requests per cycle.
-    Returns title/company/location/URL only — LinkedIn hides full JDs.
+
+async def _fetch_linkedin_description(
+    client: httpx.AsyncClient,
+    job_id: str,
+    headers: dict,
+    fallback: str,
+) -> str:
+    """Fetch full job description from LinkedIn guest job-posting API.
+
+    Uses the public /jobs-guest/jobs/api/jobPosting/{id} endpoint which
+    returns the complete JD HTML without requiring authentication.
+    Falls back to the enriched synthetic description on any error.
+    """
+    try:
+        resp = await client.get(
+            f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}",
+            headers=headers,
+            timeout=12,
+        )
+        if resp.status_code != 200:
+            return fallback
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Full description is in show-more-less-html__markup
+        desc_el = soup.find(class_=re.compile(r"show-more-less-html__markup"))
+        if desc_el:
+            text = desc_el.get_text(" ", strip=True)
+            if len(text) > 100:
+                return text[:4000]
+
+        # Fallback: grab all visible text from the criteria + description section
+        criteria = soup.find(class_=re.compile(r"description__job-criteria"))
+        if criteria:
+            return criteria.get_text(" ", strip=True)[:2000]
+
+    except Exception:
+        pass
+    return fallback
+
+
+async def _fetch_linkedin(client: httpx.AsyncClient) -> list[dict]:
+    """LinkedIn Jobs Guest API — fetches full job descriptions via jobPosting endpoint.
+
+    Step 1: search cards (title, company, location, URL) via seeMoreJobPostings.
+    Step 2: for each job, fetch full description from /jobs-guest/jobs/api/jobPosting/{id}.
+    No authentication required for either endpoint.
     """
     results = []
+    seen_ids: set[str] = set()
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -495,6 +540,8 @@ async def _fetch_linkedin(client: httpx.AsyncClient) -> list[dict]:
     search_cities = US_LOCATIONS + INDIA_LOCATIONS
     keywords = LINKEDIN_KEYWORDS[:3]
 
+    # ── Step 1: collect job cards ─────────────────────────────────────────────
+    cards: list[dict] = []
     for location in search_cities:
         for keyword in keywords:
             try:
@@ -522,20 +569,43 @@ async def _fetch_linkedin(client: httpx.AsyncClient) -> list[dict]:
                     url = link_el.get("href", "").split("?")[0].rstrip("/")
                     if not url:
                         continue
-                    title = title_el.get_text(strip=True)
-                    company = company_el.get_text(strip=True) if company_el else ""
-                    job_location = location_el.get_text(strip=True) if location_el else location
-                    description = _linkedin_rich_description(title, company, job_location, keyword)
-                    results.append({
-                        "title": title,
-                        "company": company,
-                        "location": job_location,
-                        "description": description,
+                    job_id = _extract_linkedin_job_id(url)
+                    if not job_id or job_id in seen_ids:
+                        continue
+                    seen_ids.add(job_id)
+                    cards.append({
+                        "job_id": job_id,
+                        "title": title_el.get_text(strip=True),
+                        "company": company_el.get_text(strip=True) if company_el else "",
+                        "location": location_el.get_text(strip=True) if location_el else location,
                         "url": url,
-                        "source": "linkedin",
+                        "keyword": keyword,
                     })
             except Exception:
                 continue
+
+    # ── Step 2: fetch full descriptions (rate-limited) ────────────────────────
+    for card in cards:
+        title    = card["title"]
+        company  = card["company"]
+        location = card["location"]
+        keyword  = card["keyword"]
+
+        fallback = _linkedin_rich_description(title, company, location, keyword)
+        description = await _fetch_linkedin_description(
+            client, card["job_id"], headers, fallback
+        )
+        # Brief pause to avoid rate-limiting
+        await asyncio.sleep(0.4)
+
+        results.append({
+            "title": title,
+            "company": company,
+            "location": location,
+            "description": description,
+            "url": card["url"],
+            "source": "linkedin",
+        })
     return results
 
 
