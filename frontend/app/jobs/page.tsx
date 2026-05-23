@@ -48,6 +48,7 @@ type RefreshStatus = "idle" | "queued" | "running" | "done" | "failed";
 export default function JobBoard() {
   const router = useRouter();
   const [jobs, setJobs] = useState<any[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [newJobIds, setNewJobIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>("idle");
@@ -61,7 +62,7 @@ export default function JobBoard() {
     const token = getToken();
     const role = getRole();
     if (!token) { router.push("/login"); return; }
-    if (role !== "admin") { router.push("/dashboard"); return; }
+    setIsAdmin(role === "admin");
     setLoading(true);
     getJobs(token, 1, 100).then(setJobs).finally(() => setLoading(false));
   }, [router]);
@@ -193,24 +194,26 @@ export default function JobBoard() {
                 : " fetched from 5 sources"}
             </p>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshStatus === "queued" || refreshStatus === "running"}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-              refreshStatus === "queued" || refreshStatus === "running"
-                ? "bg-indigo-400/30 text-indigo-300 cursor-wait"
-                : "bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/25"
-            }`}
-          >
-            {(refreshStatus === "queued" || refreshStatus === "running") && (
-              <span className="w-3.5 h-3.5 border-2 border-indigo-300/40 border-t-indigo-300 rounded-full animate-spin" />
-            )}
-            <span>
-              {refreshStatus === "queued" ? "Queuing…"
-                : refreshStatus === "running" ? "Fetching…"
-                : "↺ Refresh Jobs"}
-            </span>
-          </button>
+          {isAdmin && (
+            <button
+              onClick={handleRefresh}
+              disabled={refreshStatus === "queued" || refreshStatus === "running"}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                refreshStatus === "queued" || refreshStatus === "running"
+                  ? "bg-indigo-400/30 text-indigo-300 cursor-wait"
+                  : "bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/25"
+              }`}
+            >
+              {(refreshStatus === "queued" || refreshStatus === "running") && (
+                <span className="w-3.5 h-3.5 border-2 border-indigo-300/40 border-t-indigo-300 rounded-full animate-spin" />
+              )}
+              <span>
+                {refreshStatus === "queued" ? "Queuing…"
+                  : refreshStatus === "running" ? "Fetching…"
+                  : "↺ Refresh Jobs"}
+              </span>
+            </button>
+          )}
         </div>
 
         {refreshStatus !== "idle" && (

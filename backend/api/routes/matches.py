@@ -46,6 +46,8 @@ async def list_matches(
                 "location": j.location,
                 "source_url": j.source_url,
                 "source": j.source,
+                "posted_at": j.posted_at,
+                "fetched_at": j.fetched_at,
             },
         }
         for m, j in rows

@@ -302,15 +302,13 @@ export default function Dashboard() {
         <Link href="/"><Logo size="sm" /></Link>
         <div className="flex gap-3 items-center">
           {isAdmin && (
-            <>
-              <Link href="/admin" className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-500 dark:text-indigo-400 border border-indigo-500/25 hover:bg-indigo-500/25 transition">
-                Admin Panel
-              </Link>
-              <Link href="/jobs" className="text-[var(--text-muted)] hover:text-[var(--text)] text-sm transition px-3 py-1.5 rounded-lg">
-                Job Board
-              </Link>
-            </>
+            <Link href="/admin" className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-500 dark:text-indigo-400 border border-indigo-500/25 hover:bg-indigo-500/25 transition">
+              Admin Panel
+            </Link>
           )}
+          <Link href="/jobs" className="text-[var(--text-muted)] hover:text-[var(--text)] text-sm transition px-3 py-1.5 rounded-lg">
+            Job Board
+          </Link>
           <ThemeToggle />
           <button onClick={handleLogout}
             className="text-[var(--text-muted)] hover:text-red-500 text-sm transition px-3 py-1.5 rounded-lg">
@@ -765,6 +763,13 @@ export default function Dashboard() {
                         {m.job?.location && <span className="mx-1.5 opacity-40">·</span>}
                         {m.job?.location ?? ""}
                       </p>
+                      {(m.job?.posted_at || m.job?.fetched_at) && (
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5 opacity-70">
+                          {m.job.posted_at
+                            ? `Posted ${new Date(m.job.posted_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                            : `Fetched ${new Date(m.job.fetched_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+                        </p>
+                      )}
                     </div>
                     <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${STATUS_BADGE[m.status] ?? STATUS_BADGE.pending}`}>
                       {m.status}
