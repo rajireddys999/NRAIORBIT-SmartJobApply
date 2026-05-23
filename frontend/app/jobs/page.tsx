@@ -312,9 +312,10 @@ export default function JobBoard() {
               const srcLabel = SOURCE_LABEL[j.source] ?? j.source;
               const srcStyle = SOURCE_STYLE[j.source] ?? DEFAULT_SOURCE_STYLE;
               const isNew = newJobIds.has(j.id);
-              const dateLabel = j.posted_at
-                ? `Posted ${new Date(j.posted_at).toLocaleDateString()}`
-                : `Fetched ${new Date(j.fetched_at).toLocaleDateString()}`;
+              const postedDate = j.posted_at
+                ? new Date(j.posted_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                : null;
+              const fetchedDate = new Date(j.fetched_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
               return (
                 <a
                   key={j.id}
@@ -336,6 +337,11 @@ export default function JobBoard() {
                         {j.location && <span className="mx-1.5 opacity-40">·</span>}
                         {j.location}
                       </p>
+                      <p className="text-xs mt-1 font-medium" style={{ color: postedDate ? "var(--text-muted)" : "var(--text-muted)", opacity: 0.75 }}>
+                        {postedDate
+                          ? <><span className="text-green-500 dark:text-green-400">●</span> Posted {postedDate}</>
+                          : <><span className="opacity-50">●</span> Fetched {fetchedDate}</>}
+                      </p>
                     </div>
                     <span className="text-indigo-400 opacity-0 group-hover:opacity-100 transition text-sm shrink-0 mt-0.5">
                       Open →
@@ -343,26 +349,19 @@ export default function JobBoard() {
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 mt-2.5 items-center">
-                    {/* New badge */}
                     {isNew && (
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-500 text-white">
                         New
                       </span>
                     )}
-                    {/* Source badge */}
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${srcStyle}`}>
                       {srcLabel}
                     </span>
-                    {/* Experience level badge */}
                     {level && (
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${LEVEL_STYLE[level]}`}>
                         {level === "Entry" ? "Entry Level" : "Senior"}
                       </span>
                     )}
-                    {/* Date — posted_at preferred, fetched_at as fallback */}
-                    <span className="text-xs text-[var(--text-muted)] ml-auto">
-                      {dateLabel}
-                    </span>
                   </div>
                 </a>
               );
