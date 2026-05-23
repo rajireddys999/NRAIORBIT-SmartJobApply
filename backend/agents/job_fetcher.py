@@ -125,6 +125,22 @@ LINKEDIN_KEYWORDS = [
     "data engineer",
 ]
 
+def _linkedin_rich_description(title: str, company: str, location: str, keyword: str) -> str:
+    """Build an enriched description for LinkedIn jobs that don't expose full JDs."""
+    from backend.agents.resume_matcher import ROLE_SKILLS
+    title_lower = title.lower()
+    skills: list[str] = []
+    for role in sorted(ROLE_SKILLS, key=len, reverse=True):
+        if role in title_lower:
+            skills = ROLE_SKILLS[role]
+            break
+    desc = f"{title} at {company} in {location}."
+    if skills:
+        desc += f" Key skills: {', '.join(skills[:18])}."
+    desc += f" Search category: {keyword}."
+    return desc
+
+
 # Location strings that indicate a job is NOT in USA or India (for post-fetch filtering)
 _BLOCKED_COUNTRIES = {
     "uk", "united kingdom", "germany", "france", "netherlands", "canada",
@@ -509,12 +525,7 @@ async def _fetch_linkedin(client: httpx.AsyncClient) -> list[dict]:
                     title = title_el.get_text(strip=True)
                     company = company_el.get_text(strip=True) if company_el else ""
                     job_location = location_el.get_text(strip=True) if location_el else location
-                    # Build a short description so the embedding captures context.
-                    # Full JD requires auth; title + context is enough for matching.
-                    description = (
-                        f"{title} position at {company} in {job_location}. "
-                        f"Search keywords: {keyword}."
-                    )
+                    description = _linkedin_rich_description(title, company, job_location, keyword)
                     results.append({
                         "title": title,
                         "company": company,
